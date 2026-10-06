@@ -42,6 +42,19 @@ const STREET_SUFFIX_ABBREVIATIONS: Record<string, string> = {
   circle: 'Cir', terrace: 'Ter', trail: 'Trl', square: 'Sq', plaza: 'Plz'
 };
 
+/**
+ * What: Abbreviates a US street suffix (e.g. "Road" -> "Rd") if the road
+ * name ends with one it recognizes.
+ * Why: Standard US mailing-address form abbreviates common street suffixes;
+ * this is only ever called for US addresses (see formatAddressLines) since
+ * other countries conventionally spell the suffix out.
+ * Without it: US addresses would show full suffix words (e.g. "18484
+ * Preston Road" instead of "18484 Preston Rd"), inconsistent with how US
+ * addresses are normally written.
+ * Inputs: road - the road name, or undefined if the address has none.
+ * Output: The road name with its last word abbreviated if recognized,
+ * unchanged otherwise; undefined passes through unchanged.
+ */
 function abbreviateStreetSuffix(road: string | undefined): string | undefined {
   if (!road) return road;
   const words = road.split(' ');
@@ -51,6 +64,26 @@ function abbreviateStreetSuffix(road: string | undefined): string | undefined {
   return words.join(' ');
 }
 
+/**
+ * What: Formats a Nominatim-style structured address into display lines -
+ * US addresses as ["street line (+ suite if present)", "City, ST zip"]
+ * (state abbreviated, no comma before the zip); non-US addresses as
+ * ["street line", "City, region", "Country"] (state/country spelled out, no
+ * standard abbreviation convention to apply).
+ * Why: Built from structured fields (house_number/road/city/state/...)
+ * rather than a geocoding vendor's raw display string, which typically leads
+ * with the POI's own name/category - duplicating what's already shown
+ * elsewhere as the entity's title - and doesn't follow any particular
+ * country's mailing-address convention.
+ * Without it: The modal would show a vendor's raw, unformatted address
+ * string, which (at least for Nominatim) redundantly repeats the entity's
+ * name and doesn't read like a standard US mailing address.
+ * Inputs: address - a StructuredAddress (all fields optional, since real
+ * address data is often incomplete - e.g. some OSM places have no tagged
+ * house number), or null/undefined if no address data exists at all.
+ * Output: An array of display lines, or null if there's no usable address
+ * data to show at all.
+ */
 export function formatAddressLines(address: StructuredAddress | null | undefined): string[] | null {
   if (!address) return null;
 

@@ -1,31 +1,96 @@
 import type { Coordinates } from '../types';
 
 /**
- * The map "socket": pure map mechanics only (display, camera, a single
- * marker, locking interaction). Deliberately knows nothing about what a
- * "restaurant" or any other entity category is - that's EntityProvider's job.
- * Implement this once per map vendor (MapLibre today; Google Maps, etc. later).
+ * What: The map "socket" interface - pure map mechanics only (display,
+ * camera, a single marker, locking interaction). Deliberately knows nothing
+ * about what a "restaurant" or any other entity category is - that's
+ * EntityProvider's job.
+ * Why: Lets MainPage and Modal work against a stable contract instead of a
+ * specific map vendor's API, so the map provider can be swapped (MapLibre
+ * today, Google Maps/others later) by writing a new implementation of this
+ * interface, not by changing the UI.
+ * Without it: Every component that needs the map would call MapLibre's SDK
+ * directly, hard-coding the app to one vendor and making a future provider
+ * swap mean rewriting UI code instead of adding one file.
+ * Inputs: n/a (interface declaration - see each method below).
+ * Output: n/a (interface declaration - see each method below).
  */
 export interface MapAdapter {
-  /** Mount into the given container and resolve once the map is ready to use.
+  /**
+   * What: Mounts the map into a container element and resolves once it's
+   * ready to use.
+   * Why: MainPage needs to know when it's safe to call flyTo/setMarker/etc,
+   * and when EntityProvider.activate() can safely register layer filters and
+   * click handlers.
+   * Without it: Callers would have to guess when the underlying map library
+   * has finished initializing, causing calls made too early to silently
+   * fail or throw.
+   * Inputs: container - the HTMLElement the map should render into.
+   * Output: A Promise that resolves (with no value) once the map is ready.
    * Implementations default to a world view (whole-planet, zoomed out) until
-   * told otherwise - MainPage always starts on a world map regardless of adapter. */
+   * told otherwise - MainPage always starts on a world map regardless of
+   * which adapter is plugged in.
+   */
   mount(container: HTMLElement): Promise<void>;
 
-  /** Animate the camera to the given coordinates/zoom. */
+  /**
+   * What: Animates the camera to the given coordinates and zoom level.
+   * Why: Gives MainPage a vendor-agnostic way to recenter the map after an
+   * address search or a "use current location" action.
+   * Without it: MainPage would need vendor-specific camera APIs, defeating
+   * the purpose of the adapter boundary.
+   * Inputs: coordinates - where to center the camera; zoom - the target zoom level.
+   * Output: None (void) - the camera animates as a side effect.
+   */
   flyTo(coordinates: Coordinates, zoom: number): void;
 
-  /** Show a single reusable marker at the given coordinates, moving it if one already exists. */
+  /**
+   * What: Shows a single reusable marker at the given coordinates, moving it
+   * if one already exists rather than creating a new one each time.
+   * Why: The app only ever needs to mark "current location" - reusing one
+   * marker avoids accumulating stale markers on repeated searches.
+   * Without it: Every search/locate action would need its own marker
+   * lifecycle management duplicated at the call site, and old markers would
+   * pile up on the map.
+   * Inputs: coordinates - where the marker should appear.
+   * Output: None (void) - the marker is created/moved as a side effect.
+   */
   setMarker(coordinates: Coordinates): void;
 
-  /** Disable user-driven pan/zoom/rotate (e.g. while a modal is open over the map). */
+  /**
+   * What: Disables user-driven pan/zoom/rotate on the map.
+   * Why: Used while the entity-info modal is open, so dragging/scrolling
+   * behind the modal can't move the map the user can't currently see clearly.
+   * Without it: Users could pan/zoom the map underneath an open modal,
+   * which is disorienting and was explicitly called out as unwanted.
+   * Inputs: None.
+   * Output: None (void) - interaction is disabled as a side effect.
+   */
   lockInteraction(): void;
 
-  /** Re-enable interaction disabled by lockInteraction(). */
+  /**
+   * What: Re-enables interaction previously disabled by lockInteraction().
+   * Why: Restores normal map use once the modal that required locking it closes.
+   * Without it: The map would stay frozen/unusable after the first time a
+   * modal was opened and closed.
+   * Inputs: None.
+   * Output: None (void) - interaction is re-enabled as a side effect.
+   */
   unlockInteraction(): void;
 
-  /** Escape hatch for a matching EntityProvider implementation that needs the
-   * native map instance (e.g. MapLibreEntityProvider needs the maplibregl.Map
-   * to register layer filters/click handlers). Opaque to everything else. */
+  /**
+   * What: Escape hatch that exposes the underlying, vendor-specific map
+   * instance (e.g. the real maplibregl.Map).
+   * Why: A matching EntityProvider implementation (e.g. MapLibreEntityProvider)
+   * needs direct access to the native map to register layer filters and click
+   * handlers that this interface intentionally doesn't abstract, since POI
+   * mechanisms differ too much per vendor to generalize here.
+   * Without it: EntityProvider implementations would have no way to reach the
+   * map they need to attach to, forcing MapAdapter to grow a much larger,
+   * vendor-leaking interface just to cover every possible POI mechanism.
+   * Inputs: None.
+   * Output: The native map instance, typed as unknown since its real shape is
+   * only known to the matching EntityProvider implementation.
+   */
   getNativeMap(): unknown;
 }

@@ -3,14 +3,33 @@ import type { Entity, EntityConfig } from '../types';
 export type EntityClickHandler = (entity: Entity) => void;
 
 /**
- * Finds/surfaces points of interest for whatever category an EntityConfig
- * describes, on whatever underlying map a matching MapAdapter is driving.
- * This is what makes the app generic over "restaurants" vs. "clothing
- * stores" vs. anything else: the config is the only thing that changes.
+ * What: Interface for finding/surfacing points of interest for whatever
+ * category an EntityConfig describes, on whatever underlying map a matching
+ * MapAdapter is driving.
+ * Why: This is what makes the app generic over "restaurants" vs. "clothing
+ * stores" vs. anything else - the config is the only thing that should need
+ * to change to retarget the app, and this interface is what makes that true
+ * by keeping category-matching logic out of MainPage/Modal.
+ * Without it: Entity discovery/click-handling would be written directly
+ * against one vendor's POI mechanism inside MainPage, so switching category
+ * or map vendor would mean rewriting UI code instead of swapping a provider.
+ * Inputs: n/a (interface declaration - see the method below).
+ * Output: n/a (interface declaration - see the method below).
  */
 export interface EntityProvider {
-  /** Start showing entities matching the given config and invoke the handler
-   * when one is clicked. Safe to call again with a new config to retarget
-   * the category (e.g. switching from restaurants to clothing stores). */
+  /**
+   * What: Starts showing entities matching the given config and invokes the
+   * handler whenever one is clicked.
+   * Why: MainPage needs to react to entity clicks (to open the info modal)
+   * without knowing how a particular map vendor exposes POI data or click
+   * events.
+   * Without it: MainPage would have to register vendor-specific click
+   * listeners itself, re-coupling it to one map/data provider.
+   * Inputs: config - which category of entity to surface (e.g. restaurants);
+   * onEntityClick - called with a normalized Entity whenever one is clicked.
+   * Output: None (void) - entities start appearing/responding to clicks as a
+   * side effect. Safe to call again with a new config to retarget the
+   * category (e.g. switching from restaurants to clothing stores).
+   */
   activate(config: EntityConfig, onEntityClick: EntityClickHandler): void;
 }
