@@ -6,10 +6,34 @@ export interface ModalHooks {
   onClose?: () => void;
 }
 
+/** A line rendered as a link that opens in a new tab. */
+export interface ModalLink {
+  text: string;
+  href: string;
+}
+
 /** A single display line. A string[] renders as one block with tight
  * (<br>-separated) spacing between its sub-lines - used for a multi-line
- * entity like an address, which is conceptually one piece of information. */
-export type ModalLine = string | string[];
+ * entity like an address, which is conceptually one piece of information.
+ * A ModalLink renders as a link. */
+export type ModalLine = string | string[] | ModalLink;
+
+/**
+ * What: Returns href only if it's an http(s) URL.
+ * Why: Link targets can come from data files/DB rows that shouldn't be
+ * trusted; a "javascript:" or other-scheme URL must never become a live link.
+ * Without it: A malicious or malformed website value could run script when clicked.
+ * Inputs: href - the candidate URL.
+ * Output: The normalized URL string if it parses as http/https, else null.
+ */
+function safeHttpUrl(href: string): string | null {
+  try {
+    const url = new URL(href);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * What: A generic, reusable modal - title + an ordered list of info lines +
@@ -94,8 +118,9 @@ export class Modal {
    * (the address) should read as one entity rather than several.
    * Without it: Every line would need identical spacing, address street/city
    * lines looking like unrelated facts rather than one address block.
-   * Inputs: lines - ordered list of ModalLine entries (plain strings or
-   * string arrays for tight-spaced multi-line blocks).
+   * Inputs: lines - ordered list of ModalLine entries (plain strings,
+   * string arrays for tight-spaced multi-line blocks, or links). A link
+   * whose href isn't http(s) is rendered as plain text instead.
    * Output: None (void) - replaces the modal's rendered body as a side
    * effect. Built via textContent/DOM nodes rather than innerHTML, since
    * lines can come from third-party data (OSM names/addresses) that
@@ -106,6 +131,21 @@ export class Modal {
 
     lines.forEach((line) => {
       const p = document.createElement('p');
+      if (typeof line === 'object' && !Array.isArray(line)) {
+        const href = safeHttpUrl(line.href);
+        if (href) {
+          const a = document.createElement('a');
+          a.href = href;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.textContent = line.text;
+          p.append(a);
+        } else {
+          p.textContent = line.text;
+        }
+        this.detailsEl.append(p);
+        return;
+      }
       const sublines = Array.isArray(line) ? line : [line];
       sublines.forEach((text, i) => {
         if (i > 0) p.appendChild(document.createElement('br'));

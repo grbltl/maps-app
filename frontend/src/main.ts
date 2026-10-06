@@ -1,6 +1,7 @@
 import { MainPage } from './components/mainPage/MainPage';
 import { MapLibreMapAdapter } from './adapters/maplibre/MapLibreMapAdapter';
-import { OverpassEntityProvider } from './adapters/overpass/OverpassEntityProvider';
+import { MapEntityProvider } from './adapters/maplibre/MapEntityProvider';
+import { FileEntityDataSource } from './adapters/file/FileEntityDataSource';
 import { NominatimGeocodingProvider } from './adapters/nominatim/NominatimGeocodingProvider';
 import { activeEntityConfig } from './config/entityConfig';
 
@@ -9,14 +10,14 @@ import { activeEntityConfig } from './config/entityConfig';
 // means writing a GoogleMapAdapter (+ optionally a Google geocoding
 // provider) and changing only the `new` calls below.
 //
-// OverpassEntityProvider (radius search against OpenStreetMap's Overpass
-// API) is used here instead of MapLibreEntityProvider (filtering the base
-// style's own vector-tile POI layers) because the base style's tiles only
-// reliably carry POI data at close zoom - Overpass can answer "every
-// <category> within N miles" regardless of map zoom. MapLibreEntityProvider
-// still exists as a valid, simpler alternative EntityProvider implementation.
+// Entity records come from an EntityDataSource "socket". Today that's a
+// local data file; once the data outgrows a file, a database-backed
+// EntityDataSource replaces FileEntityDataSource on the line below and
+// nothing else changes - MapEntityProvider still does the rendering and the
+// exact radius filtering in the browser.
 const mapAdapter = new MapLibreMapAdapter();
-const entityProvider = new OverpassEntityProvider(mapAdapter);
+const entityDataSource = new FileEntityDataSource();
+const entityProvider = new MapEntityProvider(mapAdapter, entityDataSource);
 const geocodingProvider = new NominatimGeocodingProvider();
 
 const root = document.getElementById('app');

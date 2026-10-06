@@ -5,6 +5,7 @@ import type { GeocodingProvider } from '../../core/interfaces/GeocodingProvider'
 import type { Coordinates, Entity, EntityConfig } from '../../core/types';
 import { Modal, type ModalLine } from '../modal/Modal';
 import { haversineDistanceMiles, formatDistanceMiles } from '../../utils/distance';
+import { activeDeals } from '../../utils/deals';
 import { getCurrentPosition } from '../../utils/geolocation';
 import { boundsFromCoordinates, buildCirclePolygonCoordinates } from '../../utils/geoCircle';
 
@@ -23,7 +24,8 @@ export interface MainPageDeps {
 // see setCurrentLocationIfUnset).
 const DEFAULT_ZOOM = 16;
 
-// How far out EntityProvider.showNear() searches once "current location" is resolved.
+// How far out EntityProvider.showNear() searches once "current location" is
+// resolved - entities farther than this are filtered out in the browser.
 const ENTITY_SEARCH_RADIUS_MILES = 5;
 
 /**
@@ -278,7 +280,7 @@ export class MainPage {
    * search around. The camera frame is computed and applied *before*
    * awaiting showNear so "instantly" doesn't end up waiting on the network -
    * the user sees the search area the moment it's known, independent of how
-   * long Overpass takes to respond.
+   * long the entity data source takes to respond.
    * Without it: The "locked once" logic would need duplicating at both call
    * sites, there would be no single moment to trigger a radius search for
    * providers that need one, and the camera would have no area-sized frame
@@ -310,61 +312,56 @@ export class MainPage {
   }
 
   /**
-   * What: Opens the entity-info modal for a clicked entity and progressively
-   * fills in its distance, address, and phone as each resolves.
+   * What: Opens the entity-info modal for a clicked entity, showing whatever
+   * details its data source provided, and fills in the distance once
+   * "current location" resolves.
    * Why: This is what actually happens when a user clicks an entity on the
-   * map - and address/phone (a network call) and distance (location
-   * resolution, possibly also async) load independently and at different
-   * speeds, so each should render as soon as it's ready rather than one
-   * blocking the other.
-   * Without it: Clicking an entity would do nothing, or the modal would have
-   * to wait for the slower of two unrelated lookups before showing anything.
-   * Inputs: entity - the clicked Entity (name + coordinates, and optionally
-   * details an EntityProvider already had on hand) reported by EntityProvider.
+   * map. All details come with the entity itself (from our own data
+   * source), so only the distance - which may need the browser's location -
+   * loads asynchronously.
+   * Without it: Clicking an entity would do nothing.
+   * Inputs: entity - the clicked Entity reported by EntityProvider.
    * Output: None (void) - opens/updates the modal as a side effect.
-   * A requestId guards against a late-resolving lookup from a previous click
-   * overwriting a newer one if the user clicks another entity before the
-   * first finishes loading. When the entity already carries both address and
-   * phone (e.g. from Overpass's own OSM tags), the geocoding network call is
-   * skipped entirely rather than redundantly re-fetching data already in hand.
+   * A requestId guards against a late-resolving location from a previous
+   * click overwriting a newer one if the user clicks another entity first.
    */
   private showEntityModal(entity: Entity): void {
     const requestId = ++this.modalRequestId;
     const hasLocationSource: boolean = Boolean(this.currentLocation) || Boolean(this.getGeolocation());
-
-    const prefilledAddress = entity.details?.address ?? null;
-    const prefilledPhone = entity.details?.phone ?? null;
-    const needsDetailsLookup = !prefilledAddress || !prefilledPhone;
+    const details = entity.details ?? {};
+    const deals = activeDeals(details.deals, new Date());
 
     const state = {
-      addressLoading: needsDetailsLookup,
-      addressLines: prefilledAddress,
-      phone: prefilledPhone,
       distanceLoading: hasLocationSource,
       distanceLine: null as string | null
     };
 
     /**
-     * What: Re-renders the modal's body lines from the current state.
-     * Why: address/phone and distance update independently as their
-     * respective lookups resolve; re-deriving the full line list from state
-     * each time keeps rendering consistent instead of hand-patching the DOM
-     * per update.
-     * Without it: Each async resolution would need its own bespoke DOM
-     * update, risking lines appearing in the wrong order or going stale.
-     * Inputs: None (closes over `state`).
+     * What: Re-renders the modal's body lines from the entity's details and
+     * the current distance state.
+     * Why: The distance resolves after the modal opens; re-deriving the full
+     * line list each time keeps the order consistent instead of
+     * hand-patching the DOM.
+     * Without it: The distance update would need its own bespoke DOM edit,
+     * risking lines appearing in the wrong order.
+     * Inputs: None (closes over `state`, `details`, `deals`).
      * Output: None (void) - calls this.modal.setLines() as a side effect.
+     * Fields the entity doesn't have are simply left out.
      */
     const render = (): void => {
       const lines: ModalLine[] = [];
       if (state.distanceLoading) lines.push('Finding distance...');
       else if (state.distanceLine) lines.push(state.distanceLine);
 
-      if (state.addressLoading) {
-        lines.push('Loading...');
-      } else {
-        if (state.addressLines) lines.push(state.addressLines);
-        if (state.phone) lines.push(state.phone);
+      if (details.cuisine) lines.push(details.cuisine);
+      if (deals.length > 0) lines.push(["Today's deals:", ...deals.map((deal) => `• ${deal.description}`)]);
+      if (details.address && details.address.length > 0) lines.push(details.address);
+      if (details.phone) lines.push(details.phone);
+      if (details.hours) lines.push(details.hours);
+      if (details.website) {
+        // Spreadsheet entries often omit the scheme ("example.com").
+        const href = /^[a-z][a-z0-9+.-]*:/i.test(details.website) ? details.website : `https://${details.website}`;
+        lines.push({ text: details.website, href });
       }
       this.modal.setLines(lines);
     };
@@ -372,24 +369,6 @@ export class MainPage {
     this.modal.setTitle(entity.name);
     render();
     this.modal.open();
-
-    if (needsDetailsLookup) {
-      this.deps.geocodingProvider
-        .getEntityDetails(entity.coordinates)
-        .then((details) => {
-          if (requestId !== this.modalRequestId) return; // a newer click superseded this one
-          state.addressLoading = false;
-          state.addressLines = prefilledAddress ?? details.address;
-          state.phone = prefilledPhone ?? details.phone;
-          render();
-        })
-        .catch(() => {
-          if (requestId !== this.modalRequestId) return;
-          state.addressLoading = false;
-          state.addressLines = prefilledAddress ?? ['Address unavailable.'];
-          render();
-        });
-    }
 
     if (hasLocationSource) {
       this.resolveCurrentLocation()

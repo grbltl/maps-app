@@ -155,9 +155,10 @@ export class MapLibreMapAdapter implements MapAdapter {
 
   /**
    * What: Returns the underlying MapLibreGLMap instance.
-   * Why: MapLibreEntityProvider needs direct access to register layer
-   * filters and click handlers that MapAdapter deliberately doesn't abstract.
-   * Without it: MapLibreEntityProvider would have no way to reach the map
+   * Why: MapEntityProvider/MapLibreEntityProvider need direct access to
+   * add sources/layers, set layer filters, and register click handlers that
+   * MapAdapter deliberately doesn't abstract.
+   * Without it: Those entity providers would have no way to reach the map
    * it needs to configure.
    * Inputs: None.
    * Output: The MapLibreGLMap instance, typed as unknown at this boundary

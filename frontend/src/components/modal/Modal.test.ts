@@ -64,4 +64,21 @@ describe('Modal', () => {
     expect(paragraphs).toHaveLength(1);
     expect(paragraphs[0].textContent).toBe('second');
   });
+
+  it('setLines renders a link line as a new-tab link', () => {
+    const { root, modal } = mountModal();
+    modal.setLines([{ text: 'example.com', href: 'https://example.com/menu' }]);
+    const link = root.querySelector('.modal-details p a') as HTMLAnchorElement;
+    expect(link.textContent).toBe('example.com');
+    expect(link.href).toBe('https://example.com/menu');
+    expect(link.target).toBe('_blank');
+    expect(link.rel).toBe('noopener noreferrer');
+  });
+
+  it('setLines renders a non-http(s) link as plain text, never as a live link', () => {
+    const { root, modal } = mountModal();
+    modal.setLines([{ text: 'click me', href: 'javascript:alert(1)' }]);
+    expect(root.querySelector('.modal-details a')).toBeNull();
+    expect(root.querySelector('.modal-details p')?.textContent).toBe('click me');
+  });
 });

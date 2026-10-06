@@ -48,7 +48,7 @@ export function buildCirclePolygonCoordinates(
 
 /**
  * What: Builds a GeoJSON Polygon Feature for a geodesic circle.
- * Why: This is the exact shape OverpassEntityProvider draws as the visual
+ * Why: This is the exact shape MapEntityProvider draws as the visual
  * search-radius ring layer.
  * Without it: Callers that need an actual GeoJSON Feature (not just raw
  * coordinates) would need to wrap buildCirclePolygonCoordinates's output

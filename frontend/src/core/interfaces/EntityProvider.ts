@@ -36,8 +36,8 @@ export interface EntityProvider {
   /**
    * What: (Re)loads entities within a radius of a center point.
    * Why: Some providers' entity data isn't tied to whatever map tiles happen
-   * to be on screen (e.g. a radius-search API like Overpass can answer "all
-   * restaurants within 5 miles of here" directly) - this is how MainPage
+   * to be on screen (e.g. MapEntityProvider, which reads our own
+   * EntityDataSource and keeps what's within 5 miles of here) - this is how MainPage
    * tells such a provider where "here" is, once it knows. Optional because
    * it's meaningless for a provider whose entities already come from the
    * visible map tiles (e.g. MapLibreEntityProvider) - activate() alone

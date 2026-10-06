@@ -15,14 +15,19 @@ one configurable category of point-of-interest at a time (restaurants by
 default). Users can search a free-text address or use their current location;
 either one, whichever happens first, is locked in as "current location" for
 the rest of the session. Clicking an entity opens a modal with its name,
-straight-line distance, address, and phone (via OpenStreetMap's Nominatim).
+straight-line distance and whatever details
+the restaurant data source provides (address, phone, website, hours, cuisine,
+today's deals). Restaurant data will come from a local file (not yet
+created, so the map currently shows none), and later from a database.
 
 Architecture
 ------------
 Ports-and-adapters: the app is built from two reusable, provider-agnostic
 "plugs" - a Modal component and a MainPage component - talking through
-interfaces (MapAdapter, EntityProvider, GeocodingProvider) to a swappable
-"socket". Today's socket is MapLibre/OpenFreeMap + Nominatim
+interfaces (MapAdapter, EntityProvider, EntityDataSource, GeocodingProvider)
+to a swappable
+"socket". Today's socket is MapLibre/OpenFreeMap + Nominatim (address search) +
+a file-backed restaurant data source
 (src/adapters/); a different map vendor means writing a new adapter behind
 the same interfaces, not touching the plugs. Which POI category is shown
 (restaurants, clothing stores, ...) is a single config object

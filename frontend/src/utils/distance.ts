@@ -59,6 +59,26 @@ export function haversineDistanceMiles(a: Coordinates, b: Coordinates): number {
 }
 
 /**
+ * What: Keeps only the items whose coordinates lie within radiusMiles of center.
+ * Why: This is the exact n-mile rule, done in the browser. Data sources only
+ * promise to return *at least* what's in range, so this is the single place
+ * that decides what's actually in, regardless of which source supplied it.
+ * Without it: Each data source would have to filter exactly on its own, and
+ * a source that over-returns (e.g. a whole file) would put out-of-range
+ * entities on the map.
+ * Inputs: items - anything with coordinates; center - the search center;
+ * radiusMiles - inclusive radius.
+ * Output: A new array of the items within range, in their original order.
+ */
+export function filterWithinRadius<T extends { coordinates: Coordinates }>(
+  items: T[],
+  center: Coordinates,
+  radiusMiles: number
+): T[] {
+  return items.filter((item) => haversineDistanceMiles(center, item.coordinates) <= radiusMiles);
+}
+
+/**
  * What: Formats a distance in miles as a one-decimal "X.X mi away" string.
  * Why: Keeps the exact display format (precision, unit label) in one place
  * rather than repeated wherever a distance is shown.
