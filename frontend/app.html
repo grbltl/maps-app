@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Interactive Map</title>
+  <!-- Load MapLibre CSS securely over CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.0/maplibre-gl.css" />
+
+  <style>
+    /* Force the map to fill the entire browser screen viewport layout */
+    body, html, #map { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+
+    #controls {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      z-index: 1;
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
+      padding: 10px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      max-width: calc(100% - 24px);
+      box-sizing: border-box;
+    }
+
+    #address-input {
+      flex: 1 1 220px;
+      min-width: 160px;
+      padding: 6px 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+
+    #controls button {
+      padding: 6px 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #f5f5f5;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    #controls button:hover { background: #e8e8e8; }
+
+    #status {
+      flex-basis: 100%;
+      color: #b00020;
+      min-height: 1em;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="controls">
+    <form id="address-form" style="display: contents;">
+      <input id="address-input" type="text" placeholder="Enter a full address" autocomplete="off" />
+      <button type="submit">Search</button>
+    </form>
+    <button id="locate-btn" type="button">Use current location</button>
+    <div id="status"></div>
+  </div>
+
+  <!-- The single, clean anchor container element -->
+  <div id="map"></div>
+
+  <!-- Load MapLibre JS Core Engine securely over CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.0/maplibre-gl.js"></script>
+
+  <script>
+    // 1. Initialize the map instantly at a full world globe layout view (Zoom 1)
+    var map = new maplibregl.Map({
+      container: 'map',
+      style: 'https://tiles.openfreemap.org/styles/bright',
+      center: [0, 20],        // VERIFIED: Proper global baseline coordinate center values
+      zoom: 1,                // Maximum zoom-out to show the full planet layout
+      attributionControl: false
+    });
+
+    // Restrict the base style's POI symbol layers to restaurants only. All POI
+    // categories (bus stops, hospitals, hardware stores, parks, restaurants...)
+    // share one "poi" source-layer and are split into these rank-based layers,
+    // distinguished only by a "class" property - so we narrow the filter rather
+    // than removing the layers. poi_transit (bus/rail/airport) never contains
+    // restaurants, so it's dropped outright.
+    map.on('load', function() {
+      ['poi_r1', 'poi_r7', 'poi_r20'].forEach(function(id) {
+        var existingFilter = map.getFilter(id);
+        map.setFilter(id, ['all', existingFilter, ['==', ['get', 'class'], 'restaurant']]);
+      });
+      if (map.getLayer('poi_transit')) map.removeLayer('poi_transit');
+    });
+
+    var marker = null; // reused across searches so results don't stack up
+    var statusEl = document.getElementById('status');
+
+    function setStatus(message) {
+      statusEl.textContent = message || '';
+    }
+
+    // Drop/move the marker and fly the camera to the given coordinates
+    function goToLocation(lng, lat, zoom) {
+      if (!marker) {
+        marker = new maplibregl.Marker({ color: '#007AFF' }).setLngLat([lng, lat]).addTo(map);
+      } else {
+        marker.setLngLat([lng, lat]);
+      }
+
+      map.flyTo({
+        center: [lng, lat],
+        zoom: zoom,
+        essential: true,
+        speed: 0.8,       // lower = more cinematic; duration now scales with distance
+        curve: 1.42,      // MapLibre default "swoop" shape (zoom out, pan, zoom in)
+        maxDuration: 6000 // cap so far-away addresses don't fly forever
+      });
+    }
+
+    // Look up a free-text address via OpenStreetMap's Nominatim geocoder
+    function searchAddress(address) {
+      setStatus('Searching...');
+      var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(address);
+
+      fetch(url, { headers: { Accept: 'application/json' } })
+        .then(function(response) {
+          if (!response.ok) throw new Error('Geocoding request failed');
+          return response.json();
+        })
+        .then(function(results) {
+          if (!results || results.length === 0) {
+            setStatus('No results found for that address.');
+            return;
+          }
+          setStatus('');
+          goToLocation(parseFloat(results[0].lon), parseFloat(results[0].lat), 15);
+        })
+        .catch(function() {
+          setStatus('Could not look up that address. Please try again.');
+        });
+    }
+
+    // Use the browser Geolocation API to find and fly to the visitor's position
+    function useCurrentLocation() {
+      if (!navigator.geolocation) {
+        setStatus('This browser does not support geolocation.');
+        return;
+      }
+
+      setStatus('Locating...');
+
+      navigator.geolocation.getCurrentPosition(
+        function(position) {
+          setStatus('');
+          goToLocation(position.coords.longitude, position.coords.latitude, 15);
+        },
+        function(error) {
+          setStatus('Location access denied or unavailable.');
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        }
+      );
+    }
+
+    document.getElementById('address-form').addEventListener('submit', function(event) {
+      event.preventDefault();
+      var address = document.getElementById('address-input').value.trim();
+      if (address) searchAddress(address);
+    });
+
+    document.getElementById('locate-btn').addEventListener('click', useCurrentLocation);
+  </script>
+
+</body>
+</html>

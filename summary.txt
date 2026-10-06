@@ -1,0 +1,31 @@
+Repo summary
+============
+
+Files at the repo root:
+  .DS_Store    - macOS folder metadata (incidental, not part of the project)
+  .gitignore   - ignores all dotfiles (pattern: ".*")
+  app.html     - the entire application: a single, self-contained HTML page
+  summary.txt  - this file
+
+What it does
+------------
+This is a minimal, single-file web map demo. app.html loads MapLibre GL JS
+(v4.7.0, from the cdnjs CDN) and renders a full-viewport map using the
+OpenFreeMap "bright" vector tile style.
+
+The map opens at zoom level 1 centered on [0, 20], showing the whole world.
+Once the base layers finish loading, the page requests the visitor's location
+via the browser Geolocation API. If the visitor allows it, a blue marker is
+dropped on their coordinates and the camera performs a 3.5-second flyTo
+animation down to street level (zoom 15). If the visitor denies the request,
+it times out, or the browser has no geolocation support, the page logs a
+message to the console and simply leaves the map at the world view.
+
+Notes
+-----
+- No build step, package manager, server, or dependencies to install; open
+  app.html in a browser to run it. Geolocation generally requires a secure
+  context (https:// or localhost).
+- Attribution controls are disabled in the map options.
+- Recent commits ("initial blank maps", "user permission verbiage updated")
+  indicate the project is in an early, exploratory stage.
