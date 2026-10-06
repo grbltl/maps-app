@@ -2,7 +2,7 @@ import type { Coordinates } from '../types';
 
 /**
  * What: Interface for turning free-text addresses into coordinates.
- * Why: Kept separate from MapAdapter since a map vendor and a geocoding
+ * Why: Kept separate from MapOutlet since a map vendor and a geocoding
  * vendor don't have to be the same choice (e.g. a Google connector might
  * want Google's geocoding, while a MapLibre/OpenFreeMap connector has no
  * geocoding of its own and reaches for Nominatim instead).
@@ -12,7 +12,7 @@ import type { Coordinates } from '../types';
  * Inputs: n/a (interface declaration - see the method below).
  * Output: n/a (interface declaration - see the method below).
  */
-export interface GeocodingProvider {
+export interface GeocodingOutlet {
   /**
    * What: Resolves a free-text address/query to coordinates.
    * Why: Powers the address search box - MainPage needs coordinates to fly

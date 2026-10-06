@@ -1,4 +1,4 @@
-import type { GeocodingProvider } from '../../core/interfaces/GeocodingProvider';
+import type { GeocodingOutlet } from '../../core/interfaces/GeocodingOutlet';
 import type { Coordinates } from '../../core/types';
 
 interface NominatimSearchResult {
@@ -7,16 +7,16 @@ interface NominatimSearchResult {
 }
 
 /**
- * What: GeocodingProvider implementation backed by OpenStreetMap's Nominatim
+ * What: GeocodingOutlet connector backed by OpenStreetMap's Nominatim
  * (free, no API key).
  * Why: This is today's concrete geocoding "connector" - the thing that
  * actually talks to a geocoding vendor's API so MainPage can depend only on
- * the GeocodingProvider interface.
+ * the GeocodingOutlet interface.
  * Without it: There would be no way to turn a typed address into coordinates.
  * Inputs: n/a (class declaration - see the method below).
  * Output: n/a (class declaration - see the method below).
  */
-export class NominatimGeocodingProvider implements GeocodingProvider {
+export class NominatimGeocodingConnector implements GeocodingOutlet {
   /**
    * What: Looks up a free-text address via Nominatim's /search endpoint and
    * returns its coordinates.

@@ -1,6 +1,6 @@
 import type { Map as MapLibreMap, MapGeoJSONFeature, FilterSpecification } from 'maplibre-gl';
-import type { EntityProvider, EntityClickHandler } from '../../core/interfaces/EntityProvider';
-import type { MapAdapter } from '../../core/interfaces/MapAdapter';
+import type { EntityProviderOutlet, EntityClickHandler } from '../../core/interfaces/EntityProviderOutlet';
+import type { MapOutlet } from '../../core/interfaces/MapOutlet';
 import type { Entity, EntityConfig } from '../../core/types';
 
 // All POI categories in OpenFreeMap's "bright" style (bus stops, hospitals,
@@ -16,33 +16,33 @@ const POI_LAYERS = ['poi_r1', 'poi_r7', 'poi_r20'];
 const TRANSIT_LAYER = 'poi_transit';
 
 /**
- * What: EntityProvider implementation that surfaces POIs from MapLibre's
+ * What: EntityProviderOutlet connector that surfaces POIs from MapLibre's
  * OpenFreeMap "bright" style by filtering its rank-based POI layers to a
  * configured category.
  * Why: This is today's concrete entity "connector" - the thing that knows
  * how this specific vendor's vector tiles expose POI categories, so
  * MainPage can stay ignorant of that mechanism entirely.
  * Without it: There would be no way to find or click restaurants/clothing
- * stores/etc on the MapLibre map; EntityProvider is just a contract, this
- * class is what fulfills it for MapLibre/OpenFreeMap specifically.
+ * stores/etc on the MapLibre map; EntityProviderOutlet is just a contract,
+ * this class is what fulfills it for MapLibre/OpenFreeMap specifically.
  * Inputs: n/a (class declaration - see the method below).
  * Output: n/a (class declaration - see the method below).
  */
-export class MapLibreEntityProvider implements EntityProvider {
+export class MapLibreEntityConnector implements EntityProviderOutlet {
   /**
-   * What: Stores the MapAdapter this provider will pull the native MapLibre
+   * What: Stores the MapOutlet this connector will pull the native MapLibre
    * map instance from.
-   * Why: EntityProvider needs direct access to the real maplibregl.Map to
-   * register layer filters/click handlers, which MapAdapter exposes via
+   * Why: EntityProviderOutlet needs direct access to the real maplibregl.Map
+   * to register layer filters/click handlers, which MapOutlet exposes via
    * getNativeMap() specifically for this purpose.
-   * Without it: There would be no way to reach the map this provider needs
+   * Without it: There would be no way to reach the map this connector needs
    * to configure.
-   * Inputs: mapAdapter - the MapAdapter (expected to be a MapLibreMapAdapter,
+   * Inputs: mapOutlet - the MapOutlet (expected to be a MapLibreMapAdapter,
    * or at least backed by a real maplibregl.Map) whose native map this
-   * provider will filter/listen on.
+   * connector will filter/listen on.
    * Output: n/a (constructor).
    */
-  constructor(private readonly mapAdapter: MapAdapter) {}
+  constructor(private readonly mapOutlet: MapOutlet) {}
 
   /**
    * What: Narrows the style's POI layers to the configured category, drops
@@ -62,7 +62,7 @@ export class MapLibreEntityProvider implements EntityProvider {
    * effect. Safe to call again with a new config to retarget the category.
    */
   activate(config: EntityConfig, onEntityClick: EntityClickHandler): void {
-    const map = this.mapAdapter.getNativeMap() as MapLibreMap;
+    const map = this.mapOutlet.getNativeMap() as MapLibreMap;
 
     POI_LAYERS.forEach((id) => {
       const existingFilter = map.getFilter(id);

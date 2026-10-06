@@ -3,17 +3,17 @@ import type { Coordinates, Entity } from '../types';
 /**
  * What: Interface for where entity (e.g. restaurant) records come from - a
  * local data file today, a database behind our own backend later.
- * Why: This is the "socket" the map-side entity provider plugs into.
+ * Why: This is the "outlet" the map-side entity connector plugs into.
  * Keeping storage behind it means moving from a file to a database is a new
  * implementation of this interface plus a one-line change in main.ts - the
  * map rendering, radius rule, and modal don't change at all.
- * Without it: The map provider would read a specific file format (or call a
+ * Without it: The map connector would read a specific file format (or call a
  * specific API) directly, so switching storage would mean rewriting the
  * rendering/filtering code alongside it.
  * Inputs: n/a (interface declaration - see the method below).
  * Output: n/a (interface declaration - see the method below).
  */
-export interface EntityDataSource {
+export interface EntityDataOutlet {
   /**
    * What: Returns entities near a center point.
    * Why: Lets each implementation narrow the data however suits its storage

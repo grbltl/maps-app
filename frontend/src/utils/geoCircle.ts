@@ -48,7 +48,7 @@ export function buildCirclePolygonCoordinates(
 
 /**
  * What: Builds a GeoJSON Polygon Feature for a geodesic circle.
- * Why: This is the exact shape MapEntityProvider draws as the visual
+ * Why: This is the exact shape MapEntityConnector draws as the visual
  * search-radius ring layer.
  * Without it: Callers that need an actual GeoJSON Feature (not just raw
  * coordinates) would need to wrap buildCirclePolygonCoordinates's output
@@ -67,7 +67,7 @@ export function buildCirclePolygonFeature(center: Coordinates, radiusMiles: numb
 /**
  * What: Computes the smallest axis-aligned bounding box enclosing a set of
  * [lng, lat] coordinates.
- * Why: This is what MainPage passes to MapAdapter.fitBounds() to instantly
+ * Why: This is what MainPage passes to MapOutlet.fitBounds() to instantly
  * frame the full search-radius circle the moment "current location" locks in.
  * Without it: There'd be no way to turn "a circle's worth of points" into the
  * west/south/east/north box fitBounds actually needs.

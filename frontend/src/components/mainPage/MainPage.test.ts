@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { MainPage, type MainPageDeps } from './MainPage';
-import type { MapAdapter } from '../../core/interfaces/MapAdapter';
-import type { EntityClickHandler, EntityProvider } from '../../core/interfaces/EntityProvider';
-import type { GeocodingProvider } from '../../core/interfaces/GeocodingProvider';
+import type { MapOutlet } from '../../core/interfaces/MapOutlet';
+import type { EntityClickHandler, EntityProviderOutlet } from '../../core/interfaces/EntityProviderOutlet';
+import type { GeocodingOutlet } from '../../core/interfaces/GeocodingOutlet';
 import type { BoundingBox, Coordinates, EntityConfig, Entity } from '../../core/types';
 import { haversineDistanceMiles, formatDistanceMiles } from '../../utils/distance';
 import { boundsFromCoordinates, buildCirclePolygonCoordinates } from '../../utils/geoCircle';
 
-class FakeMapAdapter implements MapAdapter {
+class FakeMapAdapter implements MapOutlet {
   mountCalls: HTMLElement[] = [];
   flyToCalls: Array<{ coordinates: Coordinates; zoom: number }> = [];
   fitBoundsCalls: BoundingBox[] = [];
@@ -37,7 +37,7 @@ class FakeMapAdapter implements MapAdapter {
   }
 }
 
-class FakeEntityProvider implements EntityProvider {
+class FakeEntityProvider implements EntityProviderOutlet {
   activateCalls: EntityConfig[] = [];
   showNearCalls: Array<{ center: Coordinates; radiusMiles: number }> = [];
   trigger: EntityClickHandler | null = null;
@@ -54,7 +54,7 @@ class FakeEntityProvider implements EntityProvider {
   }
 }
 
-class FakeGeocodingProvider implements GeocodingProvider {
+class FakeGeocodingProvider implements GeocodingOutlet {
   geocodeQueue: Array<Coordinates | null> = [];
   geocodeCalls: string[] = [];
 

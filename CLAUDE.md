@@ -23,39 +23,40 @@ The app is split into two layers that must stay decoupled:
   (title + ordered info lines + exit button; a line can be text, a tight multi-line block, or
   a link — links are only made live for http(s) URLs); it has zero knowledge of maps,
   entities, or geocoding. `MainPage` owns the address-search/locate controls and the map
-  container, and wires the Modal to whatever adapters are injected into it via constructor DI
+  container, and wires the Modal to whatever connectors are injected into it via constructor DI
   (`MainPageDeps`). `MainPage` always starts on a world map — that default lives in the map
-  adapter's `mount()`, not in `MainPage`.
-- **Socket** (`src/core/interfaces/`) — interfaces define the contract any provider must
-  implement: `MapAdapter` (pure map mechanics: mount/flyTo/fitBounds/marker/lock-interaction —
-  knows nothing about entity categories), `EntityProvider` (surfaces POIs on the map, reports
-  clicks, and optionally `showNear(center, radiusMiles)` for providers whose data isn't tied to
-  map tiles), `EntityDataSource` (where entity records come from:
+  connector's `mount()`, not in `MainPage`.
+- **Outlets** (`src/core/interfaces/`) — interfaces define the contract any connector must
+  implement: `MapOutlet` (pure map mechanics: mount/flyTo/fitBounds/marker/lock-interaction —
+  knows nothing about entity categories), `EntityProviderOutlet` (surfaces POIs on the map,
+  reports clicks, and optionally `showNear(center, radiusMiles)` for connectors whose data isn't
+  tied to map tiles), `EntityDataOutlet` (where entity records come from:
   `findNear(center, radiusMiles)` returns *at least* every entity in range — extras are fine,
-  since the exact radius filtering always happens in the browser), `GeocodingProvider`
+  since the exact radius filtering always happens in the browser), `GeocodingOutlet`
   (address → coordinates, used only by the search box).
-- **Connectors** (`src/adapters/`) — concrete implementations of those interfaces.
-  `maplibre/MapLibreMapAdapter` is the active `MapAdapter` (MapLibre GL JS over OpenFreeMap's
-  "bright" vector tile style). `maplibre/MapEntityProvider` is the active `EntityProvider`: it
-  removes the base style's own POI layers, asks the injected `EntityDataSource` for entities,
-  keeps only those within the radius (`filterWithinRadius`, Haversine), and renders them as its
-  own GeoJSON circle layer (entities with a deal active today get a larger green marker) plus
-  a dashed-ring polygon layer showing the exact radius. `file/FileEntityDataSource` is the
-  active `EntityDataSource` — the data file and its format aren't decided yet, so it returns
-  `[]` and the map shows no entities. A database-backed `EntityDataSource` (calling our own
-  backend) is planned for when the data outgrows a file; swapping it in is a one-line change
-  in `main.ts`. `maplibre/MapLibreEntityProvider` (filtering the style's own vector-tile POI
-  layers) still exists as an alternative `EntityProvider`, not wired up.
-  `nominatim/NominatimGeocodingProvider` is the `GeocodingProvider` (address search only).
-  Adding a new map vendor (e.g. Google Maps) means writing a new adapter behind the same
-  interfaces — the plugs and the composition root's shape don't change.
-- **Composition root** (`src/main.ts`) — the only file that knows which concrete adapters are
-  wired together. This is where you'd swap in a different connector or data source.
+- **Connectors** (`src/adapters/`) — concrete implementations of those interfaces, each file/class
+  named with an `Adapter` or `Connector` suffix. `maplibre/MapLibreMapAdapter` is the active
+  `MapOutlet` connector (MapLibre GL JS over OpenFreeMap's "bright" vector tile style).
+  `maplibre/MapEntityConnector` is the active `EntityProviderOutlet` connector: it removes the
+  base style's own POI layers, asks the injected `EntityDataOutlet` for entities, keeps only
+  those within the radius (`filterWithinRadius`, Haversine), and renders them as its own GeoJSON
+  circle layer (entities with a deal active today get a larger green marker) plus a dashed-ring
+  polygon layer showing the exact radius. `file/FileEntityDataConnector` is the active
+  `EntityDataOutlet` connector — the data file and its format aren't decided yet, so it returns
+  `[]` and the map shows no entities. A database-backed `EntityDataOutlet` connector (calling our
+  own backend) is planned for when the data outgrows a file; swapping it in is a one-line change
+  in `main.ts`. `maplibre/MapLibreEntityConnector` (filtering the style's own vector-tile POI
+  layers) still exists as an alternative `EntityProviderOutlet` connector, not wired up.
+  `nominatim/NominatimGeocodingConnector` is the `GeocodingOutlet` connector (address search
+  only). Adding a new map vendor (e.g. Google Maps) means writing a new connector behind the
+  same interfaces — the plugs and the composition root's shape don't change.
+- **Composition root** (`src/main.ts`) — the only file that knows which concrete connectors are
+  wired together. This is where you'd swap in a different connector.
 - **Entity category is config, not code** (`src/config/entityConfig.ts`) — which POI category
   is shown (restaurants, clothing stores, ...) is a single `EntityConfig` object.
-  `categoryValues` is only used by the tile-filtering `MapLibreEntityProvider`; the active
+  `categoryValues` is only used by the tile-filtering `MapLibreEntityConnector`; the active
   data-source path relies on the data source holding only the configured category.
-- **`Entity.details`** — everything about an entity comes from its `EntityDataSource`:
+- **`Entity.details`** — everything about an entity comes from its `EntityDataOutlet`:
   address, phone, website, hours (free text), cuisine, and deals. All optional; the modal
   leaves out whatever is missing (there is no geocoding fallback for missing fields). A `Deal`
   has a `description` and optional inclusive `startDate`/`endDate` (`"YYYY-MM-DD"`, compared
@@ -69,7 +70,7 @@ mailing-address formatting: abbreviated street suffix, two-line `street` / `City
 with no comma before the zip; currently unused by app code, kept for formatting structured
 addresses once the data file exists), and `geoCircle.ts` (hand-rolled geodesic circle math —
 no geometry library dependency — used both to draw the visual search-radius ring and to
-compute the `BoundingBox` passed to `MapAdapter.fitBounds()`; always called with the *same*
+compute the `BoundingBox` passed to `MapOutlet.fitBounds()`; always called with the *same*
 `radiusMiles` as the entity filter so what's drawn/framed never mismatches what's included).
 
 ## Known constraints/decisions worth preserving
@@ -93,9 +94,9 @@ compute the `BoundingBox` passed to `MapAdapter.fitBounds()`; always called with
 - **Base-map POI data is zoom-limited by the tile source, not just the style**: OpenFreeMap's
   planet tiles have `maxzoom: 14` (zoom 15–17 is MapLibre overzooming the same z14 tile), and
   POI data is sparse-to-absent below z14 in the raw tiles themselves (verified by decoding
-  real tiles). That's one reason entities come from our own `EntityDataSource` rather than the
-  base tiles, and why `MapEntityProvider` hides the base style's POI layers.
-- **`MainPage.ENTITY_SEARCH_RADIUS_MILES` (5)**: `EntityProvider.showNear()` is called once,
+  real tiles). That's one reason entities come from our own `EntityDataOutlet` rather than the
+  base tiles, and why `MapEntityConnector` hides the base style's POI layers.
+- **`MainPage.ENTITY_SEARCH_RADIUS_MILES` (5)**: `EntityProviderOutlet.showNear()` is called once,
   the same moment "current location" first locks in (see `setCurrentLocationIfUnset`) — not on
   every pan/zoom. A `showNear()` failure is swallowed inside `setCurrentLocationIfUnset`
   (logged, not thrown) and recorded in `MainPage.lastEntitySearchFailed`, which
@@ -106,7 +107,7 @@ compute the `BoundingBox` passed to `MapAdapter.fitBounds()`; always called with
   message set there.
 - **The locking search/locate instantly `fitBounds`s to the whole search-radius area instead of
   `flyTo`-ing to a point** — computed and applied *before* `showNear()` is awaited, so the
-  camera snap doesn't wait on the data source. `MapEntityProvider` likewise draws the ring
+  camera snap doesn't wait on the data source. `MapEntityConnector` likewise draws the ring
   before awaiting the data source. `flyTo` to street-level zoom still happens for any
   *subsequent* search after the lock (ordinary "look at this other place" navigation,
   unrelated to the locked distance anchor) — both `handleSearch` and `handleLocate` capture

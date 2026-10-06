@@ -4,7 +4,7 @@ export interface Coordinates {
 }
 
 /** An axis-aligned geographic bounding box, for framing an area (as opposed
- * to a single point + zoom, which is what MapAdapter.flyTo deals with). */
+ * to a single point + zoom, which is what MapOutlet.flyTo deals with). */
 export interface BoundingBox {
   west: number;
   south: number;
@@ -46,14 +46,14 @@ export interface Entity {
   details?: EntityDetails;
 }
 
-/** Declares which category of point-of-interest an EntityProvider should
- * surface. Swapping this (e.g. restaurants -> clothing stores) is meant to be
- * the only change needed to retarget the whole app at a different category. */
+/** Declares which category of point-of-interest an EntityProviderOutlet
+ * should surface. Swapping this (e.g. restaurants -> clothing stores) is meant
+ * to be the only change needed to retarget the whole app at a different category. */
 export interface EntityConfig {
   /** Human-facing label, e.g. "Restaurant". */
   label: string;
-  /** Values matched against the data source's own category/class field. Meaning is provider-specific.
-   * Used by tile-filtering providers (e.g. MapLibreEntityProvider), whose
+  /** Values matched against the data source's own category/class field. Meaning is connector-specific.
+   * Used by tile-filtering connectors (e.g. MapLibreEntityConnector), whose
    * underlying vector tiles expose every POI category through one shared
    * property. */
   categoryValues: string[];

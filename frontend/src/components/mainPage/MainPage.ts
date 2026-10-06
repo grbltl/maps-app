@@ -1,7 +1,7 @@
 import './MainPage.css';
-import type { MapAdapter } from '../../core/interfaces/MapAdapter';
-import type { EntityProvider } from '../../core/interfaces/EntityProvider';
-import type { GeocodingProvider } from '../../core/interfaces/GeocodingProvider';
+import type { MapOutlet } from '../../core/interfaces/MapOutlet';
+import type { EntityProviderOutlet } from '../../core/interfaces/EntityProviderOutlet';
+import type { GeocodingOutlet } from '../../core/interfaces/GeocodingOutlet';
 import type { Coordinates, Entity, EntityConfig } from '../../core/types';
 import { Modal, type ModalLine } from '../modal/Modal';
 import { haversineDistanceMiles, formatDistanceMiles } from '../../utils/distance';
@@ -10,9 +10,9 @@ import { getCurrentPosition } from '../../utils/geolocation';
 import { boundsFromCoordinates, buildCirclePolygonCoordinates } from '../../utils/geoCircle';
 
 export interface MainPageDeps {
-  mapAdapter: MapAdapter;
-  entityProvider: EntityProvider;
-  geocodingProvider: GeocodingProvider;
+  mapAdapter: MapOutlet;
+  entityProvider: EntityProviderOutlet;
+  geocodingProvider: GeocodingOutlet;
   entityConfig: EntityConfig;
   /** Defaults to navigator.geolocation; injectable so tests can fake it. */
   geolocation?: Geolocation | null;
@@ -24,14 +24,14 @@ export interface MainPageDeps {
 // see setCurrentLocationIfUnset).
 const DEFAULT_ZOOM = 16;
 
-// How far out EntityProvider.showNear() searches once "current location" is
+// How far out EntityProviderOutlet.showNear() searches once "current location" is
 // resolved - entities farther than this are filtered out in the browser.
 const ENTITY_SEARCH_RADIUS_MILES = 5;
 
 /**
  * What: The second "plug" - owns the address-search/locate controls, the map
  * container, and the entity-info modal, and wires them to whatever
- * MapAdapter/EntityProvider/GeocodingProvider are injected.
+ * MapOutlet/EntityProviderOutlet/GeocodingOutlet are injected.
  * Why: This is where the app's actual behavior (search, locate, show entity
  * details) lives, written entirely against the three provider interfaces so
  * it works unchanged regardless of which concrete adapters the composition
@@ -272,7 +272,7 @@ export class MainPage {
   /**
    * What: Locks in "current location" the first time it's called in a
    * session, instantly frames the camera to fit the whole search-radius
-   * area, and triggers EntityProvider.showNear() for it.
+   * area, and triggers EntityProviderOutlet.showNear() for it.
    * Why: Centralizes the "only the first-ever resolved location wins" rule
    * (shared by handleSearch's typed-address path and
    * resolveCurrentLocation's geolocation path) in one place, and is the one
@@ -320,7 +320,7 @@ export class MainPage {
    * source), so only the distance - which may need the browser's location -
    * loads asynchronously.
    * Without it: Clicking an entity would do nothing.
-   * Inputs: entity - the clicked Entity reported by EntityProvider.
+   * Inputs: entity - the clicked Entity reported by EntityProviderOutlet.
    * Output: None (void) - opens/updates the modal as a side effect.
    * A requestId guards against a late-resolving location from a previous
    * click overwriting a newer one if the user clicks another entity first.

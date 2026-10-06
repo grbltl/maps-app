@@ -1,27 +1,27 @@
 import type { BoundingBox, Coordinates } from '../types';
 
 /**
- * What: The map "socket" interface - pure map mechanics only (display,
+ * What: The map "outlet" interface - pure map mechanics only (display,
  * camera, a single marker, locking interaction). Deliberately knows nothing
  * about what a "restaurant" or any other entity category is - that's
- * EntityProvider's job.
+ * EntityProviderOutlet's job.
  * Why: Lets MainPage and Modal work against a stable contract instead of a
- * specific map vendor's API, so the map provider can be swapped (MapLibre
+ * specific map vendor's API, so the map connector can be swapped (MapLibre
  * today, Google Maps/others later) by writing a new implementation of this
  * interface, not by changing the UI.
  * Without it: Every component that needs the map would call MapLibre's SDK
- * directly, hard-coding the app to one vendor and making a future provider
+ * directly, hard-coding the app to one vendor and making a future connector
  * swap mean rewriting UI code instead of adding one file.
  * Inputs: n/a (interface declaration - see each method below).
  * Output: n/a (interface declaration - see each method below).
  */
-export interface MapAdapter {
+export interface MapOutlet {
   /**
    * What: Mounts the map into a container element and resolves once it's
    * ready to use.
    * Why: MainPage needs to know when it's safe to call flyTo/setMarker/etc,
-   * and when EntityProvider.activate() can safely register layer filters and
-   * click handlers.
+   * and when EntityProviderOutlet.activate() can safely register layer
+   * filters and click handlers.
    * Without it: Callers would have to guess when the underlying map library
    * has finished initializing, causing calls made too early to silently
    * fail or throw.
@@ -29,7 +29,7 @@ export interface MapAdapter {
    * Output: A Promise that resolves (with no value) once the map is ready.
    * Implementations default to a world view (whole-planet, zoomed out) until
    * told otherwise - MainPage always starts on a world map regardless of
-   * which adapter is plugged in.
+   * which connector is plugged in.
    */
   mount(container: HTMLElement): Promise<void>;
 
@@ -38,7 +38,7 @@ export interface MapAdapter {
    * Why: Gives MainPage a vendor-agnostic way to recenter the map after an
    * address search or a "use current location" action.
    * Without it: MainPage would need vendor-specific camera APIs, defeating
-   * the purpose of the adapter boundary.
+   * the purpose of the outlet boundary.
    * Inputs: coordinates - where to center the camera; zoom - the target zoom level.
    * Output: None (void) - the camera animates as a side effect.
    */
@@ -96,16 +96,18 @@ export interface MapAdapter {
   /**
    * What: Escape hatch that exposes the underlying, vendor-specific map
    * instance (e.g. the real maplibregl.Map).
-   * Why: A matching EntityProvider implementation (e.g. MapLibreEntityProvider)
-   * needs direct access to the native map to register layer filters and click
-   * handlers that this interface intentionally doesn't abstract, since POI
-   * mechanisms differ too much per vendor to generalize here.
-   * Without it: EntityProvider implementations would have no way to reach the
-   * map they need to attach to, forcing MapAdapter to grow a much larger,
-   * vendor-leaking interface just to cover every possible POI mechanism.
+   * Why: A matching EntityProviderOutlet implementation (e.g.
+   * MapLibreEntityConnector) needs direct access to the native map to
+   * register layer filters and click handlers that this interface
+   * intentionally doesn't abstract, since POI mechanisms differ too much per
+   * vendor to generalize here.
+   * Without it: EntityProviderOutlet implementations would have no way to
+   * reach the map they need to attach to, forcing MapOutlet to grow a much
+   * larger, vendor-leaking interface just to cover every possible POI
+   * mechanism.
    * Inputs: None.
    * Output: The native map instance, typed as unknown since its real shape is
-   * only known to the matching EntityProvider implementation.
+   * only known to the matching EntityProviderOutlet implementation.
    */
   getNativeMap(): unknown;
 }

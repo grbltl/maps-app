@@ -1,6 +1,6 @@
 import { Map as MapLibreGLMap, Marker } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import type { MapAdapter } from '../../core/interfaces/MapAdapter';
+import type { MapOutlet } from '../../core/interfaces/MapOutlet';
 import type { BoundingBox, Coordinates } from '../../core/types';
 
 // Small visual margin so a fitBounds target isn't flush against the
@@ -10,26 +10,26 @@ const FIT_BOUNDS_PADDING_PX = 40;
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
 
 /**
- * What: MapAdapter implementation backed by MapLibre GL JS rendering
- * OpenFreeMap's "bright" vector tile style.
+ * What: MapOutlet connector backed by MapLibre GL JS rendering OpenFreeMap's
+ * "bright" vector tile style.
  * Why: This is today's concrete map "connector" - the thing that actually
  * talks to a map vendor's SDK so the rest of the app can depend only on the
- * MapAdapter interface.
- * Without it: There would be no working map at all; MapAdapter is just a
+ * MapOutlet interface.
+ * Without it: There would be no working map at all; MapOutlet is just a
  * contract, this class is what fulfills it for MapLibre/OpenFreeMap.
  * Inputs: n/a (class declaration - see each method below).
  * Output: n/a (class declaration - see each method below).
  */
-export class MapLibreMapAdapter implements MapAdapter {
+export class MapLibreMapAdapter implements MapOutlet {
   private map: MapLibreGLMap | null = null;
   private marker: Marker | null = null;
 
   /**
    * What: Creates the MapLibre map inside the given container and resolves
    * once its style has finished loading.
-   * Why: MainPage and EntityProvider.activate() both need a guarantee that
+   * Why: MainPage and EntityProviderOutlet.activate() both need a guarantee that
    * the map's style/layers exist before they touch it.
-   * Without it: flyTo/setMarker calls or EntityProvider layer filters made
+   * Without it: flyTo/setMarker calls or EntityProviderOutlet layer filters made
    * before the style loads would throw or silently no-op, since MapLibre
    * hasn't built its internal layer state yet.
    * Inputs: container - the HTMLElement to render the map into.
@@ -155,14 +155,14 @@ export class MapLibreMapAdapter implements MapAdapter {
 
   /**
    * What: Returns the underlying MapLibreGLMap instance.
-   * Why: MapEntityProvider/MapLibreEntityProvider need direct access to
+   * Why: MapEntityConnector/MapLibreEntityConnector need direct access to
    * add sources/layers, set layer filters, and register click handlers that
-   * MapAdapter deliberately doesn't abstract.
-   * Without it: Those entity providers would have no way to reach the map
+   * MapOutlet deliberately doesn't abstract.
+   * Without it: Those entity connectors would have no way to reach the map
    * it needs to configure.
    * Inputs: None.
    * Output: The MapLibreGLMap instance, typed as unknown at this boundary
-   * since MapAdapter itself stays vendor-agnostic.
+   * since MapOutlet itself stays vendor-agnostic.
    */
   getNativeMap(): unknown {
     return this.requireMap();
