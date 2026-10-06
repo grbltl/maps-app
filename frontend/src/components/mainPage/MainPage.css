@@ -9,8 +9,14 @@ body,
 }
 
 .map-container {
-  position: absolute;
-  inset: 0;
+  /* Not position:absolute+inset: MapLibre assigns its own "maplibregl-map"
+     class to this element, which sets position:relative in maplibre-gl.css -
+     loaded after this stylesheet, so it wins the cascade tie and silently
+     overrides position:absolute, collapsing this element to height:0 since
+     inset is a no-op for position:relative sizing. Sizing it directly instead
+     works regardless of which position value wins. */
+  width: 100%;
+  height: 100%;
 }
 
 .controls {
