@@ -2,30 +2,30 @@ Repo summary
 ============
 
 Files at the repo root:
-  .DS_Store    - macOS folder metadata (incidental, not part of the project)
-  .gitignore   - ignores all dotfiles (pattern: ".*")
-  app.html     - the entire application: a single, self-contained HTML page
+  .gitignore   - ignores all dotfiles, plus node_modules/ and dist/
+  CLAUDE.md    - guidance for Claude Code when working in this repo
   summary.txt  - this file
+  backend/     - reserved for future backend work; currently empty
+  frontend/    - the map app (Vite + TypeScript) and its dev-container scaffolding
 
 What it does
 ------------
-This is a minimal, single-file web map demo. app.html loads MapLibre GL JS
-(v4.7.0, from the cdnjs CDN) and renders a full-viewport map using the
-OpenFreeMap "bright" vector tile style.
+An interactive map (MapLibre GL JS over OpenFreeMap vector tiles) that shows
+one configurable category of point-of-interest at a time (restaurants by
+default). Users can search a free-text address or use their current location;
+either one, whichever happens first, is locked in as "current location" for
+the rest of the session. Clicking an entity opens a modal with its name,
+straight-line distance, address, and phone (via OpenStreetMap's Nominatim).
 
-The map opens at zoom level 1 centered on [0, 20], showing the whole world.
-Once the base layers finish loading, the page requests the visitor's location
-via the browser Geolocation API. If the visitor allows it, a blue marker is
-dropped on their coordinates and the camera performs a 3.5-second flyTo
-animation down to street level (zoom 15). If the visitor denies the request,
-it times out, or the browser has no geolocation support, the page logs a
-message to the console and simply leaves the map at the world view.
+Architecture
+------------
+Ports-and-adapters: the app is built from two reusable, provider-agnostic
+"plugs" - a Modal component and a MainPage component - talking through
+interfaces (MapAdapter, EntityProvider, GeocodingProvider) to a swappable
+"socket". Today's socket is MapLibre/OpenFreeMap + Nominatim
+(src/adapters/); a different map vendor means writing a new adapter behind
+the same interfaces, not touching the plugs. Which POI category is shown
+(restaurants, clothing stores, ...) is a single config object
+(src/config/entityConfig.ts), not scattered through the codebase.
 
-Notes
------
-- No build step, package manager, server, or dependencies to install; open
-  app.html in a browser to run it. Geolocation generally requires a secure
-  context (https:// or localhost).
-- Attribution controls are disabled in the map options.
-- Recent commits ("initial blank maps", "user permission verbiage updated")
-  indicate the project is in an early, exploratory stage.
+See CLAUDE.md for commands (dev/build/test) and more architecture detail.
