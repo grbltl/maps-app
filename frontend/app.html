@@ -51,6 +51,62 @@
       color: #b00020;
       min-height: 1em;
     }
+
+    body.modal-open { overflow: hidden; }
+
+    #modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+
+    #modal-backdrop.hidden { display: none; }
+
+    #modal {
+      position: relative;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+      padding: 20px;
+      /* Fixed footprint: the box never grows or shrinks to fit its content.
+         Any overflow (e.g. a long address) scrolls inside instead. */
+      width: 320px;
+      height: 240px;
+      max-width: calc(100% - 32px);
+      max-height: calc(100% - 32px);
+      overflow-y: auto;
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    #modal-close {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: 50%;
+      background: #f0f0f0;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    #modal-close:hover { background: #e0e0e0; }
+
+    #modal-title {
+      margin: 0 28px 10px 0;
+      font-size: 18px;
+    }
+
+    #modal-details p { margin: 0 0 8px; color: #444; font-size: 14px; }
   </style>
 </head>
 <body>
@@ -66,6 +122,14 @@
 
   <!-- The single, clean anchor container element -->
   <div id="map"></div>
+
+  <div id="modal-backdrop" class="hidden">
+    <div id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button id="modal-close" type="button" aria-label="Close">&times;</button>
+      <h2 id="modal-title"></h2>
+      <div id="modal-details"></div>
+    </div>
+  </div>
 
   <!-- Load MapLibre JS Core Engine securely over CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.0/maplibre-gl.js"></script>
@@ -86,12 +150,24 @@
     // distinguished only by a "class" property - so we narrow the filter rather
     // than removing the layers. poi_transit (bus/rail/airport) never contains
     // restaurants, so it's dropped outright.
+    var RESTAURANT_LAYERS = ['poi_r1', 'poi_r7', 'poi_r20'];
+
     map.on('load', function() {
-      ['poi_r1', 'poi_r7', 'poi_r20'].forEach(function(id) {
+      RESTAURANT_LAYERS.forEach(function(id) {
         var existingFilter = map.getFilter(id);
         map.setFilter(id, ['all', existingFilter, ['==', ['get', 'class'], 'restaurant']]);
       });
       if (map.getLayer('poi_transit')) map.removeLayer('poi_transit');
+
+      // Clicking a restaurant marker opens the info modal; hover shows a pointer
+      // cursor so it's clear the marker is interactive.
+      RESTAURANT_LAYERS.forEach(function(id) {
+        map.on('click', id, function(e) {
+          showRestaurantModal(e.features[0]);
+        });
+        map.on('mouseenter', id, function() { map.getCanvas().style.cursor = 'pointer'; });
+        map.on('mouseleave', id, function() { map.getCanvas().style.cursor = ''; });
+      });
     });
 
     var marker = null; // reused across searches so results don't stack up
@@ -100,6 +176,145 @@
     function setStatus(message) {
       statusEl.textContent = message || '';
     }
+
+    // --- Restaurant info modal ---------------------------------------------
+
+    var modalBackdrop = document.getElementById('modal-backdrop');
+    var modalTitle = document.getElementById('modal-title');
+    var modalDetails = document.getElementById('modal-details');
+    var modalRequestId = 0; // guards against a stale reverse-geocode reply overwriting a newer click
+
+    function setModalDetailLines(lines) {
+      while (modalDetails.firstChild) modalDetails.removeChild(modalDetails.firstChild);
+      lines.forEach(function(text) {
+        var p = document.createElement('p');
+        p.textContent = text;
+        modalDetails.appendChild(p);
+      });
+    }
+
+    function openModal() {
+      modalBackdrop.classList.remove('hidden');
+      document.body.classList.add('modal-open');
+      // Prevent the map underneath the modal from panning/zooming while it's open.
+      map.scrollZoom.disable();
+      map.dragPan.disable();
+      map.touchZoomRotate.disable();
+      map.doubleClickZoom.disable();
+      map.boxZoom.disable();
+      map.keyboard.disable();
+    }
+
+    function closeModal() {
+      modalBackdrop.classList.add('hidden');
+      document.body.classList.remove('modal-open');
+      map.scrollZoom.enable();
+      map.dragPan.enable();
+      map.touchZoomRotate.enable();
+      map.doubleClickZoom.enable();
+      map.boxZoom.enable();
+      map.keyboard.enable();
+    }
+
+    var US_STATE_ABBREVIATIONS = {
+      'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA',
+      'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE', 'District of Columbia': 'DC',
+      'Florida': 'FL', 'Georgia': 'GA', 'Hawaii': 'HI', 'Idaho': 'ID', 'Illinois': 'IL',
+      'Indiana': 'IN', 'Iowa': 'IA', 'Kansas': 'KS', 'Kentucky': 'KY', 'Louisiana': 'LA',
+      'Maine': 'ME', 'Maryland': 'MD', 'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN',
+      'Mississippi': 'MS', 'Missouri': 'MO', 'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV',
+      'New Hampshire': 'NH', 'New Jersey': 'NJ', 'New Mexico': 'NM', 'New York': 'NY',
+      'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH', 'Oklahoma': 'OK', 'Oregon': 'OR',
+      'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC', 'South Dakota': 'SD',
+      'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT', 'Vermont': 'VT', 'Virginia': 'VA',
+      'Washington': 'WA', 'West Virginia': 'WV', 'Wisconsin': 'WI', 'Wyoming': 'WY',
+      'Puerto Rico': 'PR', 'Guam': 'GU', 'American Samoa': 'AS',
+      'United States Virgin Islands': 'VI', 'Northern Mariana Islands': 'MP'
+    };
+
+    var STREET_SUFFIX_ABBREVIATIONS = {
+      street: 'St', avenue: 'Ave', boulevard: 'Blvd', drive: 'Dr', road: 'Rd',
+      lane: 'Ln', court: 'Ct', place: 'Pl', highway: 'Hwy', parkway: 'Pkwy',
+      circle: 'Cir', terrace: 'Ter', trail: 'Trl', square: 'Sq', plaza: 'Plz'
+    };
+
+    function abbreviateStreetSuffix(road) {
+      if (!road) return road;
+      var words = road.split(' ');
+      var last = words[words.length - 1].toLowerCase();
+      if (STREET_SUFFIX_ABBREVIATIONS[last]) words[words.length - 1] = STREET_SUFFIX_ABBREVIATIONS[last];
+      return words.join(' ');
+    }
+
+    // Returns ["street line", "City, ST zip"] in standard US mailing-address
+    // form (state abbreviated, no comma between state and zip). Built from
+    // structured fields rather than Nominatim's display_name, which leads with
+    // the POI's own name (the same "amenity" address component we already show
+    // as the modal title) and would otherwise duplicate it on the address line.
+    function formatAddressLines(address) {
+      if (!address) return null;
+
+      var street = [address.house_number, abbreviateStreetSuffix(address.road)].filter(Boolean).join(' ');
+      if (address.unit) street += ' Suite ' + address.unit;
+
+      var locality = address.city || address.town || address.village || address.suburb || address.neighbourhood;
+
+      if (address.country_code === 'us') {
+        var state = US_STATE_ABBREVIATIONS[address.state] || address.state;
+        var cityStateZip = [locality, [state, address.postcode].filter(Boolean).join(' ')]
+          .filter(Boolean).join(', ');
+        var usLines = [street, cityStateZip].filter(Boolean);
+        return usLines.length ? usLines : null;
+      }
+
+      // Non-US: no standard state-abbreviation convention, so keep the state
+      // name and include the country.
+      var region = [address.state, address.postcode].filter(Boolean).join(' ');
+      var lines = [street, [locality, region].filter(Boolean).join(', '), address.country].filter(Boolean);
+      return lines.length ? lines : null;
+    }
+
+    // Show what we already have from the vector tile immediately (name), then
+    // fill in the full address and, when OSM has one tagged, a phone number
+    // once the reverse-geocode lookup resolves.
+    function showRestaurantModal(feature) {
+      var props = feature.properties || {};
+      var coords = feature.geometry.coordinates;
+      var lng = coords[0], lat = coords[1];
+      var requestId = ++modalRequestId;
+
+      modalTitle.textContent = props.name || 'Restaurant';
+      setModalDetailLines(['Loading...']);
+      openModal();
+
+      var url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng + '&zoom=18&addressdetails=1&extratags=1';
+      fetch(url, { headers: { Accept: 'application/json' } })
+        .then(function(response) {
+          if (!response.ok) throw new Error('Reverse geocoding failed');
+          return response.json();
+        })
+        .then(function(data) {
+          if (requestId !== modalRequestId) return; // a newer click superseded this one
+          var lines = formatAddressLines(data && data.address) || [(data && data.display_name) || 'Address unavailable.'];
+          var phone = data && data.extratags && (data.extratags.phone || data.extratags['contact:phone']);
+          if (phone) lines.push(phone);
+          setModalDetailLines(lines);
+        })
+        .catch(function() {
+          if (requestId !== modalRequestId) return;
+          setModalDetailLines(['Address unavailable.']);
+        });
+    }
+
+    document.getElementById('modal-close').addEventListener('click', closeModal);
+
+    // Restaurant markers are split across minzoom tiers in the style (poi_r1
+    // from z15, poi_r7 - the bulk of ordinary restaurants - only from z16,
+    // poi_r20 from z17). That's a pure rendering cutoff, not a network/tile
+    // cost, so landing one tier higher doesn't cost any load time - it just
+    // shows what was already there. Land at z16 so restaurants are visible
+    // without an extra manual zoom step.
+    var DEFAULT_ZOOM = 16;
 
     // Drop/move the marker and fly the camera to the given coordinates
     function goToLocation(lng, lat, zoom) {
@@ -135,7 +350,7 @@
             return;
           }
           setStatus('');
-          goToLocation(parseFloat(results[0].lon), parseFloat(results[0].lat), 15);
+          goToLocation(parseFloat(results[0].lon), parseFloat(results[0].lat), DEFAULT_ZOOM);
         })
         .catch(function() {
           setStatus('Could not look up that address. Please try again.');
@@ -154,7 +369,7 @@
       navigator.geolocation.getCurrentPosition(
         function(position) {
           setStatus('');
-          goToLocation(position.coords.longitude, position.coords.latitude, 15);
+          goToLocation(position.coords.longitude, position.coords.latitude, DEFAULT_ZOOM);
         },
         function(error) {
           setStatus('Location access denied or unavailable.');
