@@ -1,4 +1,4 @@
-import maplibregl from 'maplibre-gl';
+import { Map as MapLibreGLMap, Marker } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { MapAdapter } from '../../core/interfaces/MapAdapter';
 import type { Coordinates } from '../../core/types';
@@ -17,8 +17,8 @@ const STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
  * Output: n/a (class declaration - see each method below).
  */
 export class MapLibreMapAdapter implements MapAdapter {
-  private map: maplibregl.Map | null = null;
-  private marker: maplibregl.Marker | null = null;
+  private map: MapLibreGLMap | null = null;
+  private marker: Marker | null = null;
 
   /**
    * What: Creates the MapLibre map inside the given container and resolves
@@ -32,7 +32,7 @@ export class MapLibreMapAdapter implements MapAdapter {
    * Output: A Promise that resolves (no value) once the map's 'load' event fires.
    */
   mount(container: HTMLElement): Promise<void> {
-    const map = new maplibregl.Map({
+    const map = new MapLibreGLMap({
       container,
       style: STYLE_URL,
       center: [0, 20], // world view: MainPage always starts here regardless of adapter
@@ -82,7 +82,7 @@ export class MapLibreMapAdapter implements MapAdapter {
   setMarker(coordinates: Coordinates): void {
     const map = this.requireMap();
     if (!this.marker) {
-      this.marker = new maplibregl.Marker({ color: '#007AFF' })
+      this.marker = new Marker({ color: '#007AFF' })
         .setLngLat([coordinates.lng, coordinates.lat])
         .addTo(map);
     } else {
@@ -128,13 +128,13 @@ export class MapLibreMapAdapter implements MapAdapter {
   }
 
   /**
-   * What: Returns the underlying maplibregl.Map instance.
+   * What: Returns the underlying MapLibreGLMap instance.
    * Why: MapLibreEntityProvider needs direct access to register layer
    * filters and click handlers that MapAdapter deliberately doesn't abstract.
    * Without it: MapLibreEntityProvider would have no way to reach the map
    * it needs to configure.
    * Inputs: None.
-   * Output: The maplibregl.Map instance, typed as unknown at this boundary
+   * Output: The MapLibreGLMap instance, typed as unknown at this boundary
    * since MapAdapter itself stays vendor-agnostic.
    */
   getNativeMap(): unknown {
@@ -150,9 +150,9 @@ export class MapLibreMapAdapter implements MapAdapter {
    * throw a confusing "Cannot read properties of null" instead of a clear
    * message pointing at the actual mistake (using the adapter too early).
    * Inputs: None.
-   * Output: The mounted maplibregl.Map instance.
+   * Output: The mounted MapLibreGLMap instance.
    */
-  private requireMap(): maplibregl.Map {
+  private requireMap(): MapLibreGLMap {
     if (!this.map) throw new Error('MapLibreMapAdapter used before mount() resolved');
     return this.map;
   }
