@@ -194,7 +194,11 @@
             resolve(currentLocation);
           },
           reject,
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+          // Network-based positioning (Wi-Fi/cell) instead of GPS: tens of meters
+          // of error is negligible for a "X.X mi away" distance line, and this
+          // avoids powering up the GPS radio for what is, at most, one call per
+          // page session.
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 0 }
         );
       });
     }
