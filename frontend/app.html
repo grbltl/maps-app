@@ -102,11 +102,12 @@
     #modal-close:hover { background: #e0e0e0; }
 
     #modal-title {
-      margin: 0 28px 10px 0;
+      margin: 0 28px 16px 0;
       font-size: 18px;
     }
 
-    #modal-details p { margin: 0 0 8px; color: #444; font-size: 14px; }
+    #modal-details p { margin: 0 0 16px; color: #444; font-size: 14px; line-height: 1.3; }
+    #modal-details p:last-child { margin-bottom: 0; }
   </style>
 </head>
 <body>
@@ -177,6 +178,46 @@
       statusEl.textContent = message || '';
     }
 
+    // Cache of the visitor's own position, used both by "Use current location"
+    // and by the modal's distance line, so we only ever prompt for geolocation
+    // once per session.
+    var currentLocation = null; // { lng, lat }
+
+    function getCurrentLocation() {
+      if (currentLocation) return Promise.resolve(currentLocation);
+      if (!navigator.geolocation) return Promise.reject(new Error('Geolocation unsupported'));
+
+      return new Promise(function(resolve, reject) {
+        navigator.geolocation.getCurrentPosition(
+          function(position) {
+            currentLocation = { lng: position.coords.longitude, lat: position.coords.latitude };
+            resolve(currentLocation);
+          },
+          reject,
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      });
+    }
+
+    // Great-circle (straight-line) distance in miles. Pure math on two already-
+    // known coordinate pairs - negligible CPU cost and no network round trip,
+    // unlike driving time, which would require calling an external routing
+    // service (e.g. OSRM) for every restaurant clicked. That's why distance is
+    // shown here instead of (or in addition to) drive time.
+    function haversineDistanceMiles(lat1, lon1, lat2, lon2) {
+      var toRad = function(d) { return d * Math.PI / 180; };
+      var R = 3958.8;
+      var dLat = toRad(lat2 - lat1);
+      var dLon = toRad(lon2 - lon1);
+      var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function formatDistanceMiles(miles) {
+      return miles.toFixed(1) + ' mi away';
+    }
+
     // --- Restaurant info modal ---------------------------------------------
 
     var modalBackdrop = document.getElementById('modal-backdrop');
@@ -184,11 +225,19 @@
     var modalDetails = document.getElementById('modal-details');
     var modalRequestId = 0; // guards against a stale reverse-geocode reply overwriting a newer click
 
-    function setModalDetailLines(lines) {
+    // Each entry becomes its own <p> (normal spacing between entities - e.g.
+    // distance, address, phone). An entry that's itself an array (the address)
+    // renders as one <p> with <br> between its lines, for tight spacing within
+    // that single entity.
+    function setModalDetailLines(entries) {
       while (modalDetails.firstChild) modalDetails.removeChild(modalDetails.firstChild);
-      lines.forEach(function(text) {
+      entries.forEach(function(entry) {
         var p = document.createElement('p');
-        p.textContent = text;
+        var sublines = Array.isArray(entry) ? entry : [entry];
+        sublines.forEach(function(text, i) {
+          if (i > 0) p.appendChild(document.createElement('br'));
+          p.appendChild(document.createTextNode(text));
+        });
         modalDetails.appendChild(p);
       });
     }
@@ -274,17 +323,42 @@
       return lines.length ? lines : null;
     }
 
-    // Show what we already have from the vector tile immediately (name), then
-    // fill in the full address and, when OSM has one tagged, a phone number
-    // once the reverse-geocode lookup resolves.
+    // Address/phone (reverse geocode) and distance (geolocation) load
+    // independently and at different speeds, so each is rendered as soon as
+    // it resolves rather than waiting on the other - renderModalBody always
+    // reflects whatever part of modalState is known so far.
+    function renderModalBody(state) {
+      var lines = [];
+      if (state.distanceLoading) {
+        lines.push('Finding distance...');
+      } else if (state.distanceLine) {
+        lines.push(state.distanceLine);
+      }
+      if (state.addressLoading) {
+        lines.push('Loading...');
+      } else {
+        lines.push(state.addressLines); // one entity: street + city/state/zip, tight spacing
+        if (state.phone) lines.push(state.phone);
+      }
+      setModalDetailLines(lines);
+    }
+
     function showRestaurantModal(feature) {
       var props = feature.properties || {};
       var coords = feature.geometry.coordinates;
       var lng = coords[0], lat = coords[1];
       var requestId = ++modalRequestId;
 
+      var state = {
+        addressLoading: true,
+        addressLines: null,
+        phone: null,
+        distanceLoading: !!navigator.geolocation,
+        distanceLine: null
+      };
+
       modalTitle.textContent = props.name || 'Restaurant';
-      setModalDetailLines(['Loading...']);
+      renderModalBody(state);
       openModal();
 
       var url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng + '&zoom=18&addressdetails=1&extratags=1';
@@ -295,15 +369,33 @@
         })
         .then(function(data) {
           if (requestId !== modalRequestId) return; // a newer click superseded this one
-          var lines = formatAddressLines(data && data.address) || [(data && data.display_name) || 'Address unavailable.'];
-          var phone = data && data.extratags && (data.extratags.phone || data.extratags['contact:phone']);
-          if (phone) lines.push(phone);
-          setModalDetailLines(lines);
+          state.addressLoading = false;
+          state.addressLines = formatAddressLines(data && data.address) || [(data && data.display_name) || 'Address unavailable.'];
+          state.phone = data && data.extratags && (data.extratags.phone || data.extratags['contact:phone']);
+          renderModalBody(state);
         })
         .catch(function() {
           if (requestId !== modalRequestId) return;
-          setModalDetailLines(['Address unavailable.']);
+          state.addressLoading = false;
+          state.addressLines = ['Address unavailable.'];
+          renderModalBody(state);
         });
+
+      if (navigator.geolocation) {
+        getCurrentLocation()
+          .then(function(loc) {
+            if (requestId !== modalRequestId) return;
+            state.distanceLoading = false;
+            state.distanceLine = formatDistanceMiles(haversineDistanceMiles(loc.lat, loc.lng, lat, lng));
+            renderModalBody(state);
+          })
+          .catch(function() {
+            if (requestId !== modalRequestId) return;
+            state.distanceLoading = false;
+            state.distanceLine = null; // location denied/unavailable - omit the line
+            renderModalBody(state);
+          });
+      }
     }
 
     document.getElementById('modal-close').addEventListener('click', closeModal);
@@ -350,7 +442,14 @@
             return;
           }
           setStatus('');
-          goToLocation(parseFloat(results[0].lon), parseFloat(results[0].lat), DEFAULT_ZOOM);
+          var lng = parseFloat(results[0].lon);
+          var lat = parseFloat(results[0].lat);
+          // The first address typed, if the visitor hasn't already shared their
+          // location via the browser, doubles as "where I am" for the distance
+          // line in the restaurant modal - same one-time-per-reload rule as
+          // geolocation: once set, later searches don't overwrite it.
+          if (!currentLocation) currentLocation = { lng: lng, lat: lat };
+          goToLocation(lng, lat, DEFAULT_ZOOM);
         })
         .catch(function() {
           setStatus('Could not look up that address. Please try again.');
@@ -366,20 +465,14 @@
 
       setStatus('Locating...');
 
-      navigator.geolocation.getCurrentPosition(
-        function(position) {
+      getCurrentLocation()
+        .then(function(loc) {
           setStatus('');
-          goToLocation(position.coords.longitude, position.coords.latitude, DEFAULT_ZOOM);
-        },
-        function(error) {
+          goToLocation(loc.lng, loc.lat, DEFAULT_ZOOM);
+        })
+        .catch(function() {
           setStatus('Location access denied or unavailable.');
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0
-        }
-      );
+        });
     }
 
     document.getElementById('address-form').addEventListener('submit', function(event) {
