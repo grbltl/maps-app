@@ -1,4 +1,4 @@
-import type { Coordinates } from '../types';
+import type { BoundingBox, Coordinates } from '../types';
 
 /**
  * What: The map "socket" interface - pure map mechanics only (display,
@@ -43,6 +43,21 @@ export interface MapAdapter {
    * Output: None (void) - the camera animates as a side effect.
    */
   flyTo(coordinates: Coordinates, zoom: number): void;
+
+  /**
+   * What: Instantly frames the camera to fit the given bounding box, with no
+   * pan/zoom animation.
+   * Why: Used to snap the view to show an entire area (e.g. a search-radius
+   * circle) the moment it's known, rather than animating toward a single
+   * point at a fixed zoom - that's what flyTo is for, and the two serve
+   * different camera-framing needs (a region vs. a point).
+   * Without it: There would be no way to frame an area as opposed to a
+   * point, forcing every camera move through flyTo's point+zoom model even
+   * when what's actually known is a region to fit entirely on screen.
+   * Inputs: bounds - the west/south/east/north box to fit entirely on screen.
+   * Output: None (void) - the camera snaps to the bounds as a side effect, no animation.
+   */
+  fitBounds(bounds: BoundingBox): void;
 
   /**
    * What: Shows a single reusable marker at the given coordinates, moving it

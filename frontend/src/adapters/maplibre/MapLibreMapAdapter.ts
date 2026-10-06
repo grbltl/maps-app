@@ -1,7 +1,11 @@
 import { Map as MapLibreGLMap, Marker } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { MapAdapter } from '../../core/interfaces/MapAdapter';
-import type { Coordinates } from '../../core/types';
+import type { BoundingBox, Coordinates } from '../../core/types';
+
+// Small visual margin so a fitBounds target isn't flush against the
+// viewport edges (e.g. the controls panel in the top-left corner).
+const FIT_BOUNDS_PADDING_PX = 40;
 
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
 
@@ -67,6 +71,28 @@ export class MapLibreMapAdapter implements MapAdapter {
       curve: 1.42, // MapLibre default "swoop" shape (zoom out, pan, zoom in)
       maxDuration: 6000 // cap so far-away destinations don't fly forever
     });
+  }
+
+  /**
+   * What: Instantly snaps the camera to frame the given bounding box, with
+   * animation explicitly disabled.
+   * Why: MapLibre's fitBounds animates by default (like flyTo) - this method
+   * exists specifically for the "frame this area right now" case (e.g. the
+   * search-radius circle the moment current location locks in), where an
+   * animated transition would work against the "instantly" requirement.
+   * Without it: Callers wanting an instant frame would have to remember to
+   * pass animate:false themselves every time, or get an unwanted animation.
+   * Inputs: bounds - the west/south/east/north box to fit entirely on screen.
+   * Output: None (void) - the camera snaps to the bounds as a side effect.
+   */
+  fitBounds(bounds: BoundingBox): void {
+    this.requireMap().fitBounds(
+      [
+        [bounds.west, bounds.south],
+        [bounds.east, bounds.north]
+      ],
+      { animate: false, padding: FIT_BOUNDS_PADDING_PX }
+    );
   }
 
   /**

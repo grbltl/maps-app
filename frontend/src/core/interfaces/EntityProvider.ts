@@ -1,4 +1,4 @@
-import type { Entity, EntityConfig } from '../types';
+import type { Coordinates, Entity, EntityConfig } from '../types';
 
 export type EntityClickHandler = (entity: Entity) => void;
 
@@ -32,4 +32,24 @@ export interface EntityProvider {
    * category (e.g. switching from restaurants to clothing stores).
    */
   activate(config: EntityConfig, onEntityClick: EntityClickHandler): void;
+
+  /**
+   * What: (Re)loads entities within a radius of a center point.
+   * Why: Some providers' entity data isn't tied to whatever map tiles happen
+   * to be on screen (e.g. a radius-search API like Overpass can answer "all
+   * restaurants within 5 miles of here" directly) - this is how MainPage
+   * tells such a provider where "here" is, once it knows. Optional because
+   * it's meaningless for a provider whose entities already come from the
+   * visible map tiles (e.g. MapLibreEntityProvider) - activate() alone
+   * covers that provider's whole behavior.
+   * Without it: A radius-search provider would have no way to know what
+   * point to search around, since activate() only runs once at startup,
+   * before "current location" exists.
+   * Inputs: center - the point to search around; radiusMiles - how far out to search.
+   * Output: A Promise that resolves once entities within range are loaded
+   * and showing (or rejects if the search failed - callers should treat this
+   * as non-fatal, since the map/current-location flow it's attached to has
+   * already succeeded independently).
+   */
+  showNear?(center: Coordinates, radiusMiles: number): Promise<void>;
 }

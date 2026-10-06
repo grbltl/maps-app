@@ -3,12 +3,14 @@ import { MainPage, type MainPageDeps } from './MainPage';
 import type { MapAdapter } from '../../core/interfaces/MapAdapter';
 import type { EntityClickHandler, EntityProvider } from '../../core/interfaces/EntityProvider';
 import type { GeocodingProvider } from '../../core/interfaces/GeocodingProvider';
-import type { Coordinates, EntityConfig, EntityDetails } from '../../core/types';
+import type { BoundingBox, Coordinates, EntityConfig, EntityDetails, Entity } from '../../core/types';
 import { haversineDistanceMiles, formatDistanceMiles } from '../../utils/distance';
+import { boundsFromCoordinates, buildCirclePolygonCoordinates } from '../../utils/geoCircle';
 
 class FakeMapAdapter implements MapAdapter {
   mountCalls: HTMLElement[] = [];
   flyToCalls: Array<{ coordinates: Coordinates; zoom: number }> = [];
+  fitBoundsCalls: BoundingBox[] = [];
   markerCalls: Coordinates[] = [];
   locked = false;
 
@@ -17,6 +19,9 @@ class FakeMapAdapter implements MapAdapter {
   }
   flyTo(coordinates: Coordinates, zoom: number): void {
     this.flyToCalls.push({ coordinates, zoom });
+  }
+  fitBounds(bounds: BoundingBox): void {
+    this.fitBoundsCalls.push(bounds);
   }
   setMarker(coordinates: Coordinates): void {
     this.markerCalls.push(coordinates);
@@ -34,11 +39,18 @@ class FakeMapAdapter implements MapAdapter {
 
 class FakeEntityProvider implements EntityProvider {
   activateCalls: EntityConfig[] = [];
+  showNearCalls: Array<{ center: Coordinates; radiusMiles: number }> = [];
   trigger: EntityClickHandler | null = null;
+  showNearShouldFail = false;
 
   activate(config: EntityConfig, onEntityClick: EntityClickHandler): void {
     this.activateCalls.push(config);
     this.trigger = onEntityClick;
+  }
+
+  async showNear(center: Coordinates, radiusMiles: number): Promise<void> {
+    this.showNearCalls.push({ center, radiusMiles });
+    if (this.showNearShouldFail) throw new Error('Overpass query failed');
   }
 }
 
@@ -77,12 +89,24 @@ async function flushPromises(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+// The exact 5-mile bounds MainPage computes for whichever coordinates first
+// lock in as "current location" - mirrors production so these tests verify
+// real behavior, not a hardcoded guess at the expected numbers.
+const LOCK_RADIUS_MILES = 5;
+function expectedLockBounds(center: Coordinates): BoundingBox {
+  return boundsFromCoordinates(buildCirclePolygonCoordinates(center, LOCK_RADIUS_MILES));
+}
+
 function setup(overrides: Partial<MainPageDeps> = {}) {
   const root = document.createElement('div');
   const mapAdapter = new FakeMapAdapter();
   const entityProvider = new FakeEntityProvider();
   const geocodingProvider = new FakeGeocodingProvider();
-  const entityConfig: EntityConfig = { label: 'Restaurant', categoryValues: ['restaurant'] };
+  const entityConfig: EntityConfig = {
+    label: 'Restaurant',
+    categoryValues: ['restaurant'],
+    osmTag: { key: 'amenity', values: ['restaurant'] }
+  };
 
   const mainPage = new MainPage(root, {
     mapAdapter,
@@ -104,9 +128,10 @@ describe('MainPage', () => {
     expect(entityProvider.activateCalls).toEqual([entityConfig]);
   });
 
-  it('searching an address geocodes it and flies the map there', async () => {
+  it('searching an address geocodes it and instantly fits the camera to the search-radius area (the locking search, not a flyTo)', async () => {
     const { root, mapAdapter, geocodingProvider, mainPage } = setup();
-    geocodingProvider.geocodeQueue.push({ lng: -96.77, lat: 33.0 });
+    const coordinates = { lng: -96.77, lat: 33.0 };
+    geocodingProvider.geocodeQueue.push(coordinates);
     await mainPage.mount();
 
     (root.querySelector('input') as HTMLInputElement).value = '123 Main St';
@@ -114,7 +139,30 @@ describe('MainPage', () => {
     await flushPromises();
 
     expect(geocodingProvider.geocodeCalls).toEqual(['123 Main St']);
-    expect(mapAdapter.flyToCalls).toEqual([{ coordinates: { lng: -96.77, lat: 33.0 }, zoom: 16 }]);
+    expect(mapAdapter.fitBoundsCalls).toEqual([expectedLockBounds(coordinates)]);
+    expect(mapAdapter.flyToCalls).toEqual([]);
+  });
+
+  it('a later search (after the first lock) still flies to the point instead of re-fitting the whole area', async () => {
+    const firstLocation = { lng: -96.8, lat: 33.05 };
+    const secondLocation = { lng: -95.0, lat: 29.76 };
+
+    const { root, mapAdapter, geocodingProvider, mainPage } = setup();
+    geocodingProvider.geocodeQueue.push(firstLocation, secondLocation);
+    await mainPage.mount();
+
+    const submitSearch = (value: string) => {
+      (root.querySelector('input') as HTMLInputElement).value = value;
+      root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    };
+
+    submitSearch('first address');
+    await flushPromises();
+    submitSearch('second address, far away');
+    await flushPromises();
+
+    expect(mapAdapter.fitBoundsCalls).toEqual([expectedLockBounds(firstLocation)]);
+    expect(mapAdapter.flyToCalls).toEqual([{ coordinates: secondLocation, zoom: 16 }]);
   });
 
   it('locks in the first resolved location for the session and keeps using it for distance after later searches', async () => {
@@ -142,6 +190,78 @@ describe('MainPage', () => {
     const expectedDistance = formatDistanceMiles(haversineDistanceMiles(firstLocation, entityCoordinates));
     const lines = Array.from(root.querySelectorAll('.modal-details p')).map((p) => p.textContent);
     expect(lines).toContain(expectedDistance);
+  });
+
+  it('triggers showNear once the first location is resolved, and not again on a later search', async () => {
+    const { root, geocodingProvider, entityProvider, mainPage } = setup();
+    geocodingProvider.geocodeQueue.push({ lng: -96.77, lat: 33.0 }, { lng: -95.0, lat: 29.76 });
+    await mainPage.mount();
+
+    const submitSearch = (value: string) => {
+      (root.querySelector('input') as HTMLInputElement).value = value;
+      root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    };
+
+    submitSearch('first address');
+    await flushPromises();
+    submitSearch('second address, far away');
+    await flushPromises();
+
+    expect(entityProvider.showNearCalls).toEqual([{ center: { lng: -96.77, lat: 33.0 }, radiusMiles: 5 }]);
+  });
+
+  it('surfaces a status message (but still locks in the location and fits the camera) when showNear rejects', async () => {
+    const { root, mapAdapter, geocodingProvider, entityProvider, mainPage } = setup();
+    entityProvider.showNearShouldFail = true;
+    const coordinates = { lng: -96.77, lat: 33.0 };
+    geocodingProvider.geocodeQueue.push(coordinates);
+    await mainPage.mount();
+
+    (root.querySelector('input') as HTMLInputElement).value = '123 Main St';
+    root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    await flushPromises();
+
+    expect(root.querySelector('.status')?.textContent).toBe('Could not load nearby restaurants - try reloading the page.');
+    expect(mapAdapter.fitBoundsCalls).toEqual([expectedLockBounds(coordinates)]);
+  });
+
+  it('does not re-show the showNear failure status on a later, already-locked search', async () => {
+    const firstLocation = { lng: -96.77, lat: 33.0 };
+    const secondLocation = { lng: -95.0, lat: 29.76 };
+
+    const { root, geocodingProvider, entityProvider, mainPage } = setup();
+    entityProvider.showNearShouldFail = true;
+    geocodingProvider.geocodeQueue.push(firstLocation, secondLocation);
+    await mainPage.mount();
+
+    const submitSearch = (value: string) => {
+      (root.querySelector('input') as HTMLInputElement).value = value;
+      root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    };
+
+    submitSearch('first address');
+    await flushPromises();
+    submitSearch('second address, far away');
+    await flushPromises();
+
+    expect(root.querySelector('.status')?.textContent).toBe('');
+  });
+
+  it('skips the geocoding lookup when the entity already carries full details', async () => {
+    const { root, geocodingProvider, entityProvider, mainPage } = setup();
+    await mainPage.mount();
+
+    const prefilledEntity: Entity = {
+      name: 'brunch TIME',
+      coordinates: { lng: -96.768212, lat: 33.0071396 },
+      details: { address: ['Coit Rd', 'Plano, TX 75252'], phone: '+1-555-0100' }
+    };
+    entityProvider.trigger?.(prefilledEntity);
+    await flushPromises();
+
+    expect(geocodingProvider.detailsCalls).toHaveLength(0);
+    const lines = Array.from(root.querySelectorAll('.modal-details p')).map((p) => p.textContent);
+    expect(lines).toContain('+1-555-0100');
   });
 
   it('clicking an entity opens the modal with its name, and fills in address/phone/distance as they resolve', async () => {
@@ -186,7 +306,7 @@ describe('MainPage', () => {
     expect(root.querySelector('.modal-backdrop')?.classList.contains('hidden')).toBe(true);
   });
 
-  it('using current location recenters the map at the resolved coordinates', async () => {
+  it('using current location (the first lock) instantly fits the camera to the search-radius area', async () => {
     const { root, mapAdapter, mainPage } = setup();
     await mainPage.mount();
 
@@ -196,6 +316,7 @@ describe('MainPage', () => {
     locateButton.click();
     await flushPromises();
 
-    expect(mapAdapter.flyToCalls).toEqual([{ coordinates: { lng: -96.8, lat: 33.05 }, zoom: 16 }]);
+    expect(mapAdapter.fitBoundsCalls).toEqual([expectedLockBounds({ lng: -96.8, lat: 33.05 })]);
+    expect(mapAdapter.flyToCalls).toEqual([]);
   });
 });

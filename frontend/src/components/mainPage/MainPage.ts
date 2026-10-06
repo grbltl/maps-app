@@ -6,6 +6,7 @@ import type { Coordinates, Entity, EntityConfig } from '../../core/types';
 import { Modal, type ModalLine } from '../modal/Modal';
 import { haversineDistanceMiles, formatDistanceMiles } from '../../utils/distance';
 import { getCurrentPosition } from '../../utils/geolocation';
+import { boundsFromCoordinates, buildCirclePolygonCoordinates } from '../../utils/geoCircle';
 
 export interface MainPageDeps {
   mapAdapter: MapAdapter;
@@ -16,12 +17,14 @@ export interface MainPageDeps {
   geolocation?: Geolocation | null;
 }
 
-// Entities are split across minzoom tiers in the current MapLibre/OpenFreeMap
-// style (poi_r1 from z15, poi_r7 - the bulk of ordinary POIs - only from z16).
-// That's a style rendering cutoff, not a network/tile cost, so landing one
-// tier higher doesn't cost any load time - it just shows what was already
-// there, without requiring an extra manual zoom step.
+// A reasonable close-in zoom for flying to an address the user searches
+// *after* current location is already locked in (just navigation - the
+// locking search itself instantly fits the whole search-radius area instead,
+// see setCurrentLocationIfUnset).
 const DEFAULT_ZOOM = 16;
+
+// How far out EntityProvider.showNear() searches once "current location" is resolved.
+const ENTITY_SEARCH_RADIUS_MILES = 5;
 
 /**
  * What: The second "plug" - owns the address-search/locate controls, the map
@@ -44,6 +47,14 @@ export class MainPage {
 
   private currentLocation: Coordinates | null = null;
   private modalRequestId = 0;
+  // Set by setCurrentLocationIfUnset's showNear() outcome; read by
+  // handleSearch/handleLocate right after awaiting it, specifically for the
+  // locking call (see those methods for why this can't just be a status
+  // message set directly inside setCurrentLocationIfUnset - both callers
+  // unconditionally clear/overwrite the status line immediately afterward
+  // for their own "Searching.../Locating..." lifecycle, which would wipe out
+  // an error message set from inside that shared helper).
+  private lastEntitySearchFailed = false;
 
   /**
    * What: Builds the controls (address form, locate button, status line),
@@ -157,12 +168,23 @@ export class MainPage {
         this.setStatus('No results found for that address.');
         return;
       }
-      this.setStatus('');
+      this.deps.mapAdapter.setMarker(coordinates);
+
       // First location set this session (typed address or geolocation) wins
       // and is locked in until reload - later searches don't overwrite it.
-      if (!this.currentLocation) this.currentLocation = coordinates;
-      this.deps.mapAdapter.setMarker(coordinates);
-      this.deps.mapAdapter.flyTo(coordinates, DEFAULT_ZOOM);
+      // The locking search itself instantly fits the whole search-radius
+      // area (see setCurrentLocationIfUnset) instead of flying to a point, so
+      // flyTo only runs for subsequent searches, which are just "look at this
+      // other place" navigation, unrelated to the locked distance anchor.
+      const isFirstLock = !this.currentLocation;
+      await this.setCurrentLocationIfUnset(coordinates);
+
+      if (isFirstLock && this.lastEntitySearchFailed) {
+        this.setStatus('Could not load nearby restaurants - try reloading the page.');
+      } else {
+        this.setStatus('');
+        if (!isFirstLock) this.deps.mapAdapter.flyTo(coordinates, DEFAULT_ZOOM);
+      }
     } catch {
       this.setStatus('Could not look up that address. Please try again.');
     }
@@ -182,10 +204,18 @@ export class MainPage {
   private async handleLocate(): Promise<void> {
     this.setStatus('Locating...');
     try {
+      // Captured before resolving: see handleSearch for why only a
+      // subsequent (already-locked) locate re-use should fly to a point.
+      const isFirstLock = !this.currentLocation;
       const coordinates = await this.resolveCurrentLocation();
-      this.setStatus('');
       this.deps.mapAdapter.setMarker(coordinates);
-      this.deps.mapAdapter.flyTo(coordinates, DEFAULT_ZOOM);
+
+      if (isFirstLock && this.lastEntitySearchFailed) {
+        this.setStatus('Could not load nearby restaurants - try reloading the page.');
+      } else {
+        this.setStatus('');
+        if (!isFirstLock) this.deps.mapAdapter.flyTo(coordinates, DEFAULT_ZOOM);
+      }
     } catch {
       this.setStatus('Location access denied or unavailable.');
     }
@@ -233,8 +263,50 @@ export class MainPage {
     const geolocation = this.getGeolocation();
     if (!geolocation) throw new Error('Geolocation unsupported');
     const coordinates = await getCurrentPosition(geolocation);
-    this.currentLocation = coordinates;
+    await this.setCurrentLocationIfUnset(coordinates);
     return coordinates;
+  }
+
+  /**
+   * What: Locks in "current location" the first time it's called in a
+   * session, instantly frames the camera to fit the whole search-radius
+   * area, and triggers EntityProvider.showNear() for it.
+   * Why: Centralizes the "only the first-ever resolved location wins" rule
+   * (shared by handleSearch's typed-address path and
+   * resolveCurrentLocation's geolocation path) in one place, and is the one
+   * spot that knows when a center point has newly become available to
+   * search around. The camera frame is computed and applied *before*
+   * awaiting showNear so "instantly" doesn't end up waiting on the network -
+   * the user sees the search area the moment it's known, independent of how
+   * long Overpass takes to respond.
+   * Without it: The "locked once" logic would need duplicating at both call
+   * sites, there would be no single moment to trigger a radius search for
+   * providers that need one, and the camera would have no area-sized frame
+   * to snap to - only flyTo's point+zoom model.
+   * Inputs: coordinates - the newly-resolved location; ignored if a location
+   * was already locked in.
+   * Output: A Promise that resolves once any showNear() call this triggers
+   * settles. Deliberately swallows a showNear() failure rather than
+   * rethrowing (logged to console either way) - the location/map flow that
+   * called this has already succeeded independently of whether nearby
+   * entities loaded - but records the outcome in this.lastEntitySearchFailed
+   * so the caller can still surface it, once it's done with its own
+   * "Searching.../Locating..." status lifecycle.
+   */
+  private async setCurrentLocationIfUnset(coordinates: Coordinates): Promise<void> {
+    if (this.currentLocation) return;
+    this.currentLocation = coordinates;
+
+    const ring = buildCirclePolygonCoordinates(coordinates, ENTITY_SEARCH_RADIUS_MILES);
+    this.deps.mapAdapter.fitBounds(boundsFromCoordinates(ring));
+
+    try {
+      await this.deps.entityProvider.showNear?.(coordinates, ENTITY_SEARCH_RADIUS_MILES);
+      this.lastEntitySearchFailed = false;
+    } catch (error) {
+      console.warn('Could not load nearby entities:', error);
+      this.lastEntitySearchFailed = true;
+    }
   }
 
   /**
@@ -247,20 +319,27 @@ export class MainPage {
    * blocking the other.
    * Without it: Clicking an entity would do nothing, or the modal would have
    * to wait for the slower of two unrelated lookups before showing anything.
-   * Inputs: entity - the clicked Entity (name + coordinates) reported by EntityProvider.
+   * Inputs: entity - the clicked Entity (name + coordinates, and optionally
+   * details an EntityProvider already had on hand) reported by EntityProvider.
    * Output: None (void) - opens/updates the modal as a side effect.
    * A requestId guards against a late-resolving lookup from a previous click
    * overwriting a newer one if the user clicks another entity before the
-   * first finishes loading.
+   * first finishes loading. When the entity already carries both address and
+   * phone (e.g. from Overpass's own OSM tags), the geocoding network call is
+   * skipped entirely rather than redundantly re-fetching data already in hand.
    */
   private showEntityModal(entity: Entity): void {
     const requestId = ++this.modalRequestId;
     const hasLocationSource: boolean = Boolean(this.currentLocation) || Boolean(this.getGeolocation());
 
+    const prefilledAddress = entity.details?.address ?? null;
+    const prefilledPhone = entity.details?.phone ?? null;
+    const needsDetailsLookup = !prefilledAddress || !prefilledPhone;
+
     const state = {
-      addressLoading: true,
-      addressLines: null as string[] | null,
-      phone: null as string | null,
+      addressLoading: needsDetailsLookup,
+      addressLines: prefilledAddress,
+      phone: prefilledPhone,
       distanceLoading: hasLocationSource,
       distanceLine: null as string | null
     };
@@ -294,21 +373,23 @@ export class MainPage {
     render();
     this.modal.open();
 
-    this.deps.geocodingProvider
-      .getEntityDetails(entity.coordinates)
-      .then((details) => {
-        if (requestId !== this.modalRequestId) return; // a newer click superseded this one
-        state.addressLoading = false;
-        state.addressLines = details.address;
-        state.phone = details.phone;
-        render();
-      })
-      .catch(() => {
-        if (requestId !== this.modalRequestId) return;
-        state.addressLoading = false;
-        state.addressLines = ['Address unavailable.'];
-        render();
-      });
+    if (needsDetailsLookup) {
+      this.deps.geocodingProvider
+        .getEntityDetails(entity.coordinates)
+        .then((details) => {
+          if (requestId !== this.modalRequestId) return; // a newer click superseded this one
+          state.addressLoading = false;
+          state.addressLines = prefilledAddress ?? details.address;
+          state.phone = prefilledPhone ?? details.phone;
+          render();
+        })
+        .catch(() => {
+          if (requestId !== this.modalRequestId) return;
+          state.addressLoading = false;
+          state.addressLines = prefilledAddress ?? ['Address unavailable.'];
+          render();
+        });
+    }
 
     if (hasLocationSource) {
       this.resolveCurrentLocation()

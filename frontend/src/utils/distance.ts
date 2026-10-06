@@ -4,19 +4,35 @@ import type { Coordinates } from '../core/types';
 // coordinate pairs - negligible CPU cost and no network round trip, unlike
 // driving time, which would require calling an external routing service for
 // every entity clicked.
-const EARTH_RADIUS_MILES = 3958.8;
+export const EARTH_RADIUS_MILES = 3958.8;
 
 /**
  * What: Converts degrees to radians.
  * Why: Math.sin/Math.cos/etc expect radians, but coordinates are in degrees;
- * this is a small shared step inside the Haversine formula.
- * Without it: The conversion would be inlined and repeated at each call site
- * inside haversineDistanceMiles, or (worse) forgotten, producing wrong results.
+ * this is a small shared step inside the Haversine formula, exported for
+ * reuse by geoCircle.ts's destination-point formula (same spherical-geometry
+ * family of calculation).
+ * Without it: The conversion would be inlined and repeated at each call site,
+ * or (worse) forgotten, producing wrong results.
  * Inputs: degrees - an angle in degrees.
  * Output: The equivalent angle in radians.
  */
-function toRadians(degrees: number): number {
+export function toRadians(degrees: number): number {
   return (degrees * Math.PI) / 180;
+}
+
+/**
+ * What: Converts radians to degrees.
+ * Why: geoCircle.ts's destination-point formula computes in radians (as all
+ * trig functions require) but coordinates everywhere else in the app are in
+ * degrees; this is the inverse of toRadians, kept alongside it.
+ * Without it: Circle-polygon points would be emitted in radians, silently
+ * producing nonsense coordinates everywhere they're used as lat/lng.
+ * Inputs: radians - an angle in radians.
+ * Output: The equivalent angle in degrees.
+ */
+export function toDegrees(radians: number): number {
+  return (radians * 180) / Math.PI;
 }
 
 /**
