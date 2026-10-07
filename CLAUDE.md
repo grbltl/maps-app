@@ -49,7 +49,10 @@ The app is split into two layers that must stay decoupled:
   street/unit/city/state/zip) to an `Entity`, formatting the address with `formatAddressLines`.
   That JSON is generated, never hand-edited — see "Restaurant data" below. A database-backed `EntityDataOutlet` connector (calling our
   own backend) is planned for when the data outgrows a file; swapping it in is a one-line change
-  in `main.ts`. `maplibre/MapLibreEntityConnector` (filtering the style's own vector-tile POI
+  in `main.ts`. Whatever source is plugged in is wrapped in `cache/CachingEntityDataConnector`:
+  each real fetch covers 2x the requested radius, and a later search whose circle lies inside an
+  already-fetched area is answered from memory (last 4 areas; in-flight fetches shared, failed
+  ones forgotten). Redundant for the file, there so the database swap is cheap from day one. `maplibre/MapLibreEntityConnector` (filtering the style's own vector-tile POI
   layers) still exists as an alternative `EntityProviderOutlet` connector, not wired up.
   `nominatim/NominatimGeocodingConnector` is the `GeocodingOutlet` connector (address search
   only). Adding a new map vendor (e.g. Google Maps) means writing a new connector behind the
@@ -126,9 +129,17 @@ hand to avoid a full rerun, as long as both stay in sync.
   POI data is sparse-to-absent below z14 in the raw tiles themselves (verified by decoding
   real tiles). That's one reason entities come from our own `EntityDataOutlet` rather than the
   base tiles, and why `MapEntityConnector` hides the base style's POI layers.
-- **`MainPage.ENTITY_SEARCH_RADIUS_MILES` (5)**: `EntityProviderOutlet.showNear()` is called once,
-  the same moment "current location" first locks in (see `setCurrentLocationIfUnset`) — not on
-  every pan/zoom. A `showNear()` failure is swallowed inside `setCurrentLocationIfUnset`
+- **`MainPage.ENTITY_SEARCH_RADIUS_MILES` (5)**: `EntityProviderOutlet.showNear()` first runs the
+  moment "current location" locks in (see `setCurrentLocationIfUnset`), around that location.
+- **The search ring follows the map, distance doesn't**: after the lock, once the camera has been
+  still for `SETTLE_DELAY_MS` (500 ms; a new movement cancels it), `showNear()` re-runs around
+  the map center — but not for a move under `MIN_RESEARCH_MOVE_MILES` (0.1), which also stops the
+  lock's own `fitBounds` from triggering a duplicate. Never on every pan frame, and never on the
+  start-screen world map. Distance in the modal is always from the locked current location.
+  `MapEntityConnector.showNear()` is latest-call-wins (a superseded call neither draws nor
+  rejects) and drops already-drawn entities outside the new ring immediately, before the data
+  arrives. A settled-search failure shows its own status message, cleared by the next success.
+- A lock-time `showNear()` failure is swallowed inside `setCurrentLocationIfUnset`
   (logged, not thrown) and recorded in `MainPage.lastEntitySearchFailed`, which
   `handleSearch`/`handleLocate` check right after awaiting it to show a status message — it's
   *not* set directly as a status message from inside `setCurrentLocationIfUnset` itself,

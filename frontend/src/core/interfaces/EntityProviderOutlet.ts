@@ -45,6 +45,8 @@ export interface EntityProviderOutlet {
    * Without it: A radius-search connector would have no way to know what
    * point to search around, since activate() only runs once at startup,
    * before "current location" exists.
+   * Called again each time the search center moves (the map settling
+   * somewhere new); a newer call supersedes an older one still loading.
    * Inputs: center - the point to search around; radiusMiles - how far out to search.
    * Output: A Promise that resolves once entities within range are loaded
    * and showing (or rejects if the search failed - callers should treat this

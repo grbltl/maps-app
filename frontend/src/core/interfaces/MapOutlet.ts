@@ -74,6 +74,28 @@ export interface MapOutlet {
   setMarker(coordinates: Coordinates): void;
 
   /**
+   * What: Registers a handler called whenever the camera starts moving
+   * (user drag/zoom or a programmatic flyTo/fitBounds).
+   * Why: MainPage waits for the map to sit still before re-searching; a new
+   * movement must cancel a search that was about to fire.
+   * Without it: A search could fire in the middle of a drag.
+   * Inputs: handler - called with no arguments.
+   * Output: None (void).
+   */
+  onMoveStart(handler: () => void): void;
+
+  /**
+   * What: Registers a handler called whenever the camera stops moving,
+   * with the new map center.
+   * Why: MainPage re-searches for entities around wherever the user ends up
+   * looking, once they've settled.
+   * Without it: The search ring could never follow the map.
+   * Inputs: handler - called with the map's center after the move.
+   * Output: None (void).
+   */
+  onMoveEnd(handler: (center: Coordinates) => void): void;
+
+  /**
    * What: Turns user-driven zooming (pinch, scroll wheel, double-tap,
    * keyboard) on or off, leaving drag-panning alone.
    * Why: MainPage keeps the world map un-zoomable until "current location"

@@ -26,9 +26,23 @@ export interface MainPageDeps {
 // see setCurrentLocationIfUnset).
 const DEFAULT_ZOOM = 16;
 
-// How far out EntityProviderOutlet.showNear() searches once "current location" is
-// resolved - entities farther than this are filtered out in the browser.
+// How far out EntityProviderOutlet.showNear() searches around the search
+// center - entities farther than this are filtered out in the browser.
 const ENTITY_SEARCH_RADIUS_MILES = 5;
+
+// After current location locks in, the search ring follows the map: once the
+// camera has stopped moving for this long, entities are re-searched around
+// the new map center. Users drag around freely and only pay for a search
+// once they settle.
+const SETTLE_DELAY_MS = 500;
+
+// A settled move shorter than this from the last search center doesn't
+// re-search (e.g. a zoom gesture that barely shifts the center, or the
+// lock's own fitBounds landing a few meters off the exact location).
+const MIN_RESEARCH_MOVE_MILES = 0.1;
+
+const ENTITY_LOAD_ERROR = 'Could not load nearby restaurants - try reloading the page.';
+const ENTITY_RELOAD_ERROR = 'Could not load restaurants here - move the map to try again.';
 
 // Browsers only hand out location to secure pages (https, or localhost).
 class InsecureContextError extends Error {}
@@ -84,6 +98,11 @@ export class MainPage {
   // for their own "Searching.../Locating..." lifecycle, which would wipe out
   // an error message set from inside that shared helper).
   private lastEntitySearchFailed = false;
+  // Where the search ring is currently centered: current location at first,
+  // then wherever the map settled. Null until current location locks in -
+  // the start-screen world map never searches.
+  private lastSearchCenter: Coordinates | null = null;
+  private settleTimer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * What: Builds the controls (address form, locate button, status line),
@@ -171,6 +190,8 @@ export class MainPage {
     // Start screen: the world map can be dragged sideways but not zoomed
     // until current location locks in (see setCurrentLocationIfUnset).
     this.deps.mapAdapter.setZoomEnabled(false);
+    this.deps.mapAdapter.onMoveStart(() => this.cancelSettledSearch());
+    this.deps.mapAdapter.onMoveEnd((center) => this.scheduleSettledSearch(center));
     this.deps.entityProvider.activate(this.deps.entityConfig, (entity) => this.showEntityModal(entity));
   }
 
@@ -221,7 +242,7 @@ export class MainPage {
       await this.setCurrentLocationIfUnset(coordinates);
 
       if (isFirstLock && this.lastEntitySearchFailed) {
-        this.setStatus('Could not load nearby restaurants - try reloading the page.');
+        this.setStatus(ENTITY_LOAD_ERROR);
       } else {
         this.setStatus('');
         if (!isFirstLock) this.deps.mapAdapter.flyTo(coordinates, DEFAULT_ZOOM);
@@ -252,7 +273,7 @@ export class MainPage {
       this.deps.mapAdapter.setMarker(coordinates);
 
       if (isFirstLock && this.lastEntitySearchFailed) {
-        this.setStatus('Could not load nearby restaurants - try reloading the page.');
+        this.setStatus(ENTITY_LOAD_ERROR);
       } else {
         this.setStatus('');
         if (!isFirstLock) this.deps.mapAdapter.flyTo(coordinates, DEFAULT_ZOOM);
@@ -342,6 +363,9 @@ export class MainPage {
   private async setCurrentLocationIfUnset(coordinates: Coordinates): Promise<void> {
     if (this.currentLocation) return;
     this.currentLocation = coordinates;
+    // Set before fitBounds: its own moveend then sees ~no movement and
+    // doesn't schedule a duplicate search.
+    this.lastSearchCenter = coordinates;
 
     const ring = buildCirclePolygonCoordinates(coordinates, ENTITY_SEARCH_RADIUS_MILES);
     this.deps.mapAdapter.fitBounds(boundsFromCoordinates(ring));
@@ -353,6 +377,61 @@ export class MainPage {
     } catch (error) {
       console.warn('Could not load nearby entities:', error);
       this.lastEntitySearchFailed = true;
+    }
+  }
+
+  /**
+   * What: Cancels a settled-map search that hasn't fired yet.
+   * Why: Called when the camera starts moving again - the user hasn't
+   * settled after all, so searching the spot they're leaving is wasted work.
+   * Without it: A search could fire mid-drag.
+   * Inputs: None.
+   * Output: None (void).
+   */
+  private cancelSettledSearch(): void {
+    if (this.settleTimer !== null) clearTimeout(this.settleTimer);
+    this.settleTimer = null;
+  }
+
+  /**
+   * What: Schedules a search around the new map center for when the map has
+   * been still for SETTLE_DELAY_MS.
+   * Why: Moves the search ring to wherever the user ends up looking, while
+   * keeping searches rare - one per settled position, not one per frame.
+   * Distance in the modal is unaffected: it's always from currentLocation.
+   * Without it: The ring would stay where current location first locked in.
+   * Inputs: center - the map center the camera stopped at.
+   * Output: None (void). Does nothing before current location locks in, or
+   * if the map barely moved from the last search center.
+   */
+  private scheduleSettledSearch(center: Coordinates): void {
+    this.cancelSettledSearch();
+    if (!this.lastSearchCenter) return;
+    if (haversineDistanceMiles(center, this.lastSearchCenter) < MIN_RESEARCH_MOVE_MILES) return;
+    this.settleTimer = setTimeout(() => {
+      this.settleTimer = null;
+      void this.searchAround(center);
+    }, SETTLE_DELAY_MS);
+  }
+
+  /**
+   * What: Moves the search ring to center and shows the entities inside it.
+   * Why: The settled-map counterpart of the search setCurrentLocationIfUnset
+   * runs when location first locks in.
+   * Without it: scheduleSettledSearch would have nothing to run.
+   * Inputs: center - the new search center.
+   * Output: A Promise that resolves once the search settles. Failure is
+   * shown on the status line (and cleared by the next successful search),
+   * never thrown.
+   */
+  private async searchAround(center: Coordinates): Promise<void> {
+    this.lastSearchCenter = center;
+    try {
+      await this.deps.entityProvider.showNear?.(center, ENTITY_SEARCH_RADIUS_MILES);
+      if (this.statusEl.textContent === ENTITY_RELOAD_ERROR) this.setStatus('');
+    } catch (error) {
+      console.warn('Could not load nearby entities:', error);
+      this.setStatus(ENTITY_RELOAD_ERROR);
     }
   }
 

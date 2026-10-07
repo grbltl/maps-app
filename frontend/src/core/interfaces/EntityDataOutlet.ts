@@ -21,8 +21,9 @@ export interface EntityDataOutlet {
    * query so the browser never downloads the whole table).
    * Without it: There would be no way to ask a large store for only the
    * relevant rows.
-   * Inputs: center - the visitor's location (may be sent to our own backend
-   * for the query, but must never be logged or persisted there);
+   * Inputs: center - the search center: the visitor's location on the first
+   * search, then wherever the map settles (either may be sent to our own
+   * backend for the query, but must never be logged or persisted there);
    * radiusMiles - the search radius.
    * Output: A Promise resolving to *at least* every entity within
    * radiusMiles of center - extras are fine, since the caller always does the

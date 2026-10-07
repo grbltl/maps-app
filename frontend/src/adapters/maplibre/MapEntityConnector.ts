@@ -47,6 +47,9 @@ export class MapEntityConnector implements EntityProviderOutlet {
   // than whatever MapLibre round-trips through feature properties (it
   // stringifies nested objects/arrays).
   private shownEntities: Entity[] = [];
+  // Bumped by every showNear() call; a call whose data arrives after a newer
+  // call started drops its result instead of overwriting the newer one.
+  private searchId = 0;
 
   /**
    * What: Stores the map to draw on, the data source to read from, and a clock.
@@ -131,24 +134,49 @@ export class MapEntityConnector implements EntityProviderOutlet {
    * draws them (highlighting ones with a deal running today).
    * Why: This is where the n-mile rule is enforced, in the browser. The ring
    * and the filter use the same radiusMiles, so what's drawn always matches
-   * what's included.
+   * what's included. Called again each time the search center moves.
    * Without it: No ring or entities would ever appear.
    * Inputs: center - the point to search around; radiusMiles - how far out to include.
    * Output: A Promise that resolves once the ring and in-range entities are
    * showing. The ring is drawn before the data source is awaited, so it
-   * appears even if loading is slow or fails. Rejects if activate() hasn't
-   * been called or the data source fails - callers treat that as non-fatal.
+   * appears even if loading is slow or fails; entities already shown that
+   * fall outside the new ring disappear at the same moment (no network
+   * needed), and new ones appear once the data arrives. If a newer call
+   * starts before this one's data arrives, this one resolves without drawing
+   * (even if its fetch failed).
+   * Rejects if activate() hasn't been called or the data source fails -
+   * callers treat that as non-fatal.
    */
   async showNear(center: Coordinates, radiusMiles: number): Promise<void> {
     if (!this.activated) throw new Error('MapEntityConnector.showNear called before activate()');
 
+    const searchId = ++this.searchId;
     const map = this.mapOutlet.getNativeMap() as MapLibreMap;
     const ringSource = map.getSource(RING_SOURCE_ID) as GeoJSONSource;
     ringSource.setData(buildCirclePolygonFeature(center, radiusMiles));
+    this.drawEntities(map, filterWithinRadius(this.shownEntities, center, radiusMiles));
 
-    const candidates = await this.dataSource.findNear(center, radiusMiles);
-    this.shownEntities = filterWithinRadius(candidates, center, radiusMiles);
+    let candidates: Entity[];
+    try {
+      candidates = await this.dataSource.findNear(center, radiusMiles);
+    } catch (error) {
+      if (searchId !== this.searchId) return; // superseded - its failure no longer matters
+      throw error;
+    }
+    if (searchId !== this.searchId) return;
+    this.drawEntities(map, filterWithinRadius(candidates, center, radiusMiles));
+  }
 
+  /**
+   * What: Replaces the drawn entity markers with the given entities.
+   * Why: showNear() draws twice - the already-shown entities still inside
+   * the new ring right away, then the full result once data arrives.
+   * Without it: That feature-building code would be duplicated.
+   * Inputs: map - the native map; entities - exactly what should be shown.
+   * Output: None (void) - updates shownEntities and the GeoJSON source.
+   */
+  private drawEntities(map: MapLibreMap, entities: Entity[]): void {
+    this.shownEntities = entities;
     const today = this.now();
     const features: GeoJSON.Feature[] = this.shownEntities.map((entity, index) => ({
       type: 'Feature',

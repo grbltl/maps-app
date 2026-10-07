@@ -185,6 +185,34 @@ export class MapLibreMapAdapter implements MapOutlet {
   }
 
   /**
+   * What: Calls handler whenever the camera starts moving.
+   * Why: See MapOutlet.onMoveStart.
+   * Without it: MainPage couldn't cancel a pending search when a new drag starts.
+   * Inputs: handler - called with no arguments.
+   * Output: None (void).
+   */
+  onMoveStart(handler: () => void): void {
+    this.requireMap().on('movestart', () => handler());
+  }
+
+  /**
+   * What: Calls handler with the map center whenever the camera stops moving.
+   * Why: See MapOutlet.onMoveEnd. MapLibre's 'moveend' fires once a drag's
+   * inertia has finished, so this is "the map stopped", not "finger lifted".
+   * Without it: MainPage couldn't re-search where the user ends up looking.
+   * Inputs: handler - called with the new center.
+   * Output: None (void).
+   */
+  onMoveEnd(handler: (center: Coordinates) => void): void {
+    const map = this.requireMap();
+    map.on('moveend', () => {
+      // wrap(): after dragging around the globe, lng can drift past ±180.
+      const { lng, lat } = map.getCenter().wrap();
+      handler({ lng, lat });
+    });
+  }
+
+  /**
    * What: Allows or blocks user zooming (scroll, pinch, double-click/tap,
    * box-zoom, keyboard), leaving drag-panning as it is.
    * Why: See MapOutlet.setZoomEnabled - the start-screen world map can only

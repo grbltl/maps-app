@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MainPage, type MainPageDeps } from './MainPage';
 import type { MapOutlet } from '../../core/interfaces/MapOutlet';
 import type { EntityClickHandler, EntityProviderOutlet } from '../../core/interfaces/EntityProviderOutlet';
@@ -35,6 +35,19 @@ class FakeMapAdapter implements MapOutlet {
   }
   setZoomEnabled(enabled: boolean): void {
     this.zoomEnabled = enabled;
+  }
+  private moveStartHandlers: Array<() => void> = [];
+  private moveEndHandlers: Array<(center: Coordinates) => void> = [];
+  onMoveStart(handler: () => void): void {
+    this.moveStartHandlers.push(handler);
+  }
+  onMoveEnd(handler: (center: Coordinates) => void): void {
+    this.moveEndHandlers.push(handler);
+  }
+  /** Simulates the user dragging the map and it coming to rest at center. */
+  drag(center: Coordinates): void {
+    this.moveStartHandlers.forEach((handler) => handler());
+    this.moveEndHandlers.forEach((handler) => handler(center));
   }
   getNativeMap(): unknown {
     return null;
@@ -361,5 +374,90 @@ describe('MainPage', () => {
 
     expect(mapAdapter.fitBoundsCalls).toEqual([expectedLockBounds({ lng: -96.8, lat: 33.05 })]);
     expect(mapAdapter.flyToCalls).toEqual([]);
+  });
+});
+
+describe('MainPage search ring following the map', () => {
+  const home = { lng: -96.8, lat: 33.05 }; // the default fake geolocation
+  const elsewhere = { lng: -96.7, lat: 33.15 }; // ~9 mi away
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function setupLocked(overrides: Partial<MainPageDeps> = {}) {
+    vi.useFakeTimers();
+    const context = setup(overrides);
+    await context.mainPage.mount();
+    const locateButton = Array.from(context.root.querySelectorAll('button')).find(
+      (b) => b.textContent === 'Use current location'
+    ) as HTMLButtonElement;
+    locateButton.click();
+    await vi.advanceTimersByTimeAsync(0);
+    context.entityProvider.showNearCalls.length = 0;
+    return context;
+  }
+
+  it('does not search when the start-screen world map is dragged', async () => {
+    vi.useFakeTimers();
+    const { mapAdapter, entityProvider, mainPage } = setup();
+    await mainPage.mount();
+    mapAdapter.drag(elsewhere);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(entityProvider.showNearCalls).toEqual([]);
+  });
+
+  it('re-searches around the new map center only once the map has settled', async () => {
+    const { mapAdapter, entityProvider } = await setupLocked();
+    mapAdapter.drag(elsewhere);
+    await vi.advanceTimersByTimeAsync(400);
+    expect(entityProvider.showNearCalls).toEqual([]);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(entityProvider.showNearCalls).toEqual([{ center: elsewhere, radiusMiles: 5 }]);
+  });
+
+  it('a new drag before settling cancels the pending search', async () => {
+    const { mapAdapter, entityProvider } = await setupLocked();
+    const further = { lng: -96.6, lat: 33.25 };
+    mapAdapter.drag(elsewhere);
+    await vi.advanceTimersByTimeAsync(300);
+    mapAdapter.drag(further);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(entityProvider.showNearCalls).toEqual([{ center: further, radiusMiles: 5 }]);
+  });
+
+  it('ignores a settled move that barely shifts the center', async () => {
+    const { mapAdapter, entityProvider } = await setupLocked();
+    mapAdapter.drag({ lng: home.lng + 0.0005, lat: home.lat });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(entityProvider.showNearCalls).toEqual([]);
+  });
+
+  it('still measures distance from current location after the ring moves', async () => {
+    const { root, mapAdapter, entityProvider } = await setupLocked();
+    mapAdapter.drag(elsewhere);
+    await vi.advanceTimersByTimeAsync(500);
+
+    const entityCoordinates = { lng: -96.71, lat: 33.14 };
+    entityProvider.trigger?.({ name: 'Somewhere Grill', coordinates: entityCoordinates });
+    await vi.advanceTimersByTimeAsync(0);
+
+    const lines = Array.from(root.querySelectorAll('.modal-details p')).map((p) => p.textContent);
+    expect(lines).toContain(formatDistanceMiles(haversineDistanceMiles(home, entityCoordinates)));
+  });
+
+  it('shows a status message when a settled search fails, and clears it once one succeeds', async () => {
+    const { root, mapAdapter, entityProvider } = await setupLocked();
+    const status = () => root.querySelector('.status')?.textContent;
+
+    entityProvider.showNearShouldFail = true;
+    mapAdapter.drag(elsewhere);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(status()).toBe('Could not load restaurants here - move the map to try again.');
+
+    entityProvider.showNearShouldFail = false;
+    mapAdapter.drag(home);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(status()).toBe('');
   });
 });

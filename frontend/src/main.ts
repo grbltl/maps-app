@@ -2,6 +2,7 @@ import { MainPage } from './components/mainPage/MainPage';
 import { MapLibreMapAdapter } from './adapters/maplibre/MapLibreMapAdapter';
 import { MapEntityConnector } from './adapters/maplibre/MapEntityConnector';
 import { FileEntityDataConnector } from './adapters/file/FileEntityDataConnector';
+import { CachingEntityDataConnector } from './adapters/cache/CachingEntityDataConnector';
 import { NominatimGeocodingConnector } from './adapters/nominatim/NominatimGeocodingConnector';
 import { activeEntityConfig } from './config/entityConfig';
 
@@ -15,8 +16,14 @@ import { activeEntityConfig } from './config/entityConfig';
 // EntityDataOutlet connector replaces FileEntityDataConnector on the line
 // below and nothing else changes - MapEntityConnector still does the
 // rendering and the exact radius filtering in the browser.
+//
+// CachingEntityDataConnector wraps whichever source is plugged in: the
+// search ring follows the map as the user drags, and the cache answers
+// searches inside an already-fetched area without asking the source again.
+// It's redundant for the file (fetched once anyway) but means the database
+// swap is cheap from day one.
 const mapAdapter = new MapLibreMapAdapter();
-const entityDataSource = new FileEntityDataConnector();
+const entityDataSource = new CachingEntityDataConnector(new FileEntityDataConnector());
 const entityProvider = new MapEntityConnector(mapAdapter, entityDataSource);
 const geocodingProvider = new NominatimGeocodingConnector();
 
