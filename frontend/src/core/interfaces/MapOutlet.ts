@@ -29,7 +29,8 @@ export interface MapOutlet {
    * Output: A Promise that resolves (with no value) once the map is ready.
    * Implementations default to a world view (whole-planet, zoomed out) until
    * told otherwise - MainPage always starts on a world map regardless of
-   * which connector is plugged in.
+   * which connector is plugged in. The world view fills the container's
+   * height, so on a portrait phone the user drags left/right to see the rest.
    */
   mount(container: HTMLElement): Promise<void>;
 
@@ -71,6 +72,20 @@ export interface MapOutlet {
    * Output: None (void) - the marker is created/moved as a side effect.
    */
   setMarker(coordinates: Coordinates): void;
+
+  /**
+   * What: Turns user-driven zooming (pinch, scroll wheel, double-tap,
+   * keyboard) on or off, leaving drag-panning alone.
+   * Why: MainPage keeps the world map un-zoomable until "current location"
+   * locks in - before that, the user can only search an address, use their
+   * location, or drag the world sideways.
+   * Without it: Users could pinch/scroll the start-screen world map, which
+   * the start screen must prevent.
+   * Inputs: enabled - true to allow zooming, false to block it.
+   * Output: None (void). Independent of lockInteraction(): while locked,
+   * nothing is interactive; unlocking restores zoom only if it's enabled.
+   */
+  setZoomEnabled(enabled: boolean): void;
 
   /**
    * What: Disables user-driven pan/zoom/rotate on the map.

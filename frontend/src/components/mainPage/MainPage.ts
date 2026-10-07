@@ -16,6 +16,8 @@ export interface MainPageDeps {
   entityConfig: EntityConfig;
   /** Defaults to navigator.geolocation; injectable so tests can fake it. */
   geolocation?: Geolocation | null;
+  /** Defaults to window.isSecureContext; injectable so tests can fake it. */
+  isSecureContext?: boolean;
 }
 
 // A reasonable close-in zoom for flying to an address the user searches
@@ -27,6 +29,31 @@ const DEFAULT_ZOOM = 16;
 // How far out EntityProviderOutlet.showNear() searches once "current location" is
 // resolved - entities farther than this are filtered out in the browser.
 const ENTITY_SEARCH_RADIUS_MILES = 5;
+
+// Browsers only hand out location to secure pages (https, or localhost).
+class InsecureContextError extends Error {}
+
+/**
+ * What: Turns a failed "Use current location" attempt into a status message
+ * that says what actually went wrong.
+ * Why: The causes need different fixes from the user - open the https
+ * address, allow location in settings, or just retry - so one generic
+ * "denied or unavailable" message leaves them stuck.
+ * Without it: Every failure would look the same, including the common
+ * "opened over plain http" case where the browser never even prompts.
+ * Inputs: error - whatever resolveCurrentLocation() rejected with (an
+ * InsecureContextError, a GeolocationPositionError-shaped object, or other).
+ * Output: The status-line text.
+ */
+function locateErrorMessage(error: unknown): string {
+  if (error instanceof InsecureContextError) {
+    return 'Location only works on a secure (https) connection.';
+  }
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === 1) return 'Location permission denied. Allow it for this site in your browser settings.';
+  if (code === 3) return 'Finding your location timed out. Please try again.';
+  return 'Could not determine your location.';
+}
 
 /**
  * What: The second "plug" - owns the address-search/locate controls, the map
@@ -116,6 +143,15 @@ export class MainPage {
     });
 
     locateButton.addEventListener('click', () => void this.handleLocate());
+
+    // The app frame never zooms - only the map does. The viewport meta tag
+    // (index.html) handles most browsers, but iOS Safari ignores
+    // user-scalable=no and still pinch-zooms the whole page; cancelling its
+    // proprietary gesture events stops that. MapLibre's own pinch-zoom is
+    // built on touch events, so it's unaffected.
+    for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+      document.addEventListener(type, (event) => event.preventDefault(), { passive: false });
+    }
   }
 
   /**
@@ -132,6 +168,9 @@ export class MainPage {
    */
   async mount(): Promise<void> {
     await this.deps.mapAdapter.mount(this.mapContainer);
+    // Start screen: the world map can be dragged sideways but not zoomed
+    // until current location locks in (see setCurrentLocationIfUnset).
+    this.deps.mapAdapter.setZoomEnabled(false);
     this.deps.entityProvider.activate(this.deps.entityConfig, (entity) => this.showEntityModal(entity));
   }
 
@@ -218,8 +257,8 @@ export class MainPage {
         this.setStatus('');
         if (!isFirstLock) this.deps.mapAdapter.flyTo(coordinates, DEFAULT_ZOOM);
       }
-    } catch {
-      this.setStatus('Location access denied or unavailable.');
+    } catch (error) {
+      this.setStatus(locateErrorMessage(error));
     }
   }
 
@@ -264,6 +303,11 @@ export class MainPage {
     if (this.currentLocation) return this.currentLocation;
     const geolocation = this.getGeolocation();
     if (!geolocation) throw new Error('Geolocation unsupported');
+    // Checked up front: on plain http, Safari fails with a bare "permission
+    // denied" without ever prompting, which would point the user at the
+    // wrong fix. Only an explicit false counts (jsdom leaves it undefined).
+    const secure = this.deps.isSecureContext ?? window.isSecureContext;
+    if (secure === false) throw new InsecureContextError();
     const coordinates = await getCurrentPosition(geolocation);
     await this.setCurrentLocationIfUnset(coordinates);
     return coordinates;
@@ -301,6 +345,7 @@ export class MainPage {
 
     const ring = buildCirclePolygonCoordinates(coordinates, ENTITY_SEARCH_RADIUS_MILES);
     this.deps.mapAdapter.fitBounds(boundsFromCoordinates(ring));
+    this.deps.mapAdapter.setZoomEnabled(true);
 
     try {
       await this.deps.entityProvider.showNear?.(coordinates, ENTITY_SEARCH_RADIUS_MILES);

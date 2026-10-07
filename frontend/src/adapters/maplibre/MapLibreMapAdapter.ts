@@ -7,7 +7,26 @@ import type { BoundingBox, Coordinates } from '../../core/types';
 // viewport edges (e.g. the controls panel in the top-left corner).
 const FIT_BOUNDS_PADDING_PX = 40;
 
+// index.html preloads this exact URL - keep the two in sync.
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
+
+// MapLibre's world is TILE_SIZE_PX * 2^zoom pixels tall (Web Mercator).
+const TILE_SIZE_PX = 512;
+
+/**
+ * What: The zoom at which the whole world (pole to pole, as far as Web
+ * Mercator goes) exactly fills the container's height.
+ * Why: The start screen shows the entire world top to bottom; with zoom
+ * locked, MapLibre then has no room to pan vertically, so the only possible
+ * gesture is dragging the (wrapping) world left/right.
+ * Without it: A fixed zoom shows a different slice of the world on every
+ * screen size - cropped poles on a phone, or empty space above/below.
+ * Inputs: heightPx - the map container's height in CSS pixels.
+ * Output: The fractional zoom level.
+ */
+function worldFitZoom(heightPx: number): number {
+  return Math.log2(Math.max(heightPx, 1) / TILE_SIZE_PX);
+}
 
 /**
  * What: MapOutlet connector backed by MapLibre GL JS rendering OpenFreeMap's
@@ -23,6 +42,12 @@ const STYLE_URL = 'https://tiles.openfreemap.org/styles/bright';
 export class MapLibreMapAdapter implements MapOutlet {
   private map: MapLibreGLMap | null = null;
   private marker: Marker | null = null;
+  private zoomEnabled = true;
+  private interactionLocked = false;
+  // True until the app first moves the camera; while true, the world view is
+  // re-fitted whenever the container resizes (phone rotation, Safari's
+  // toolbar collapsing).
+  private showingWorld = true;
 
   /**
    * What: Creates the MapLibre map inside the given container and resolves
@@ -39,11 +64,24 @@ export class MapLibreMapAdapter implements MapOutlet {
     const map = new MapLibreGLMap({
       container,
       style: STYLE_URL,
-      center: [0, 20], // world view: MainPage always starts here regardless of adapter
-      zoom: 1,
-      attributionControl: false
+      center: [0, 0], // world view: MainPage always starts here regardless of adapter
+      zoom: worldFitZoom(container.clientHeight),
+      // A landscape phone is under 512px tall, so the world-fit zoom goes
+      // below the default minZoom of 0 (-2 is MapLibre's floor).
+      minZoom: -2,
+      attributionControl: false,
+      // Drag and zoom only - no rotating or tilting the map.
+      dragRotate: false,
+      touchPitch: false,
+      pitchWithRotate: false
     });
+    map.touchZoomRotate.disableRotation();
+    map.keyboard.disableRotation();
     this.map = map;
+
+    map.on('resize', () => {
+      if (this.showingWorld) map.jumpTo({ center: [map.getCenter().lng, 0], zoom: worldFitZoom(map.getContainer().clientHeight) });
+    });
 
     return new Promise((resolve) => {
       map.on('load', () => resolve());
@@ -63,6 +101,7 @@ export class MapLibreMapAdapter implements MapOutlet {
    * Output: None (void) - the camera animates as a side effect.
    */
   flyTo(coordinates: Coordinates, zoom: number): void {
+    this.showingWorld = false;
     this.requireMap().flyTo({
       center: [coordinates.lng, coordinates.lat],
       zoom,
@@ -86,6 +125,7 @@ export class MapLibreMapAdapter implements MapOutlet {
    * Output: None (void) - the camera snaps to the bounds as a side effect.
    */
   fitBounds(bounds: BoundingBox): void {
+    this.showingWorld = false;
     this.requireMap().fitBounds(
       [
         [bounds.west, bounds.south],
@@ -127,30 +167,61 @@ export class MapLibreMapAdapter implements MapOutlet {
    * Output: None (void) - interaction handlers are disabled as a side effect.
    */
   lockInteraction(): void {
-    const map = this.requireMap();
-    map.scrollZoom.disable();
-    map.dragPan.disable();
-    map.touchZoomRotate.disable();
-    map.doubleClickZoom.disable();
-    map.boxZoom.disable();
-    map.keyboard.disable();
+    this.interactionLocked = true;
+    this.applyInteraction();
   }
 
   /**
-   * What: Re-enables the interaction handlers disabled by lockInteraction().
+   * What: Re-enables the interaction handlers disabled by lockInteraction()
+   * (zoom only if setZoomEnabled hasn't turned it off).
    * Why: Restores normal map use once the modal that required locking it closes.
    * Without it: The map would stay frozen/unusable after the first modal open/close.
    * Inputs: None.
    * Output: None (void) - interaction handlers are re-enabled as a side effect.
    */
   unlockInteraction(): void {
+    this.interactionLocked = false;
+    this.applyInteraction();
+  }
+
+  /**
+   * What: Allows or blocks user zooming (scroll, pinch, double-click/tap,
+   * box-zoom, keyboard), leaving drag-panning as it is.
+   * Why: See MapOutlet.setZoomEnabled - the start-screen world map can only
+   * be dragged sideways until current location locks in.
+   * Without it: The world map would be zoomable from the first touch.
+   * Inputs: enabled - true to allow zooming.
+   * Output: None (void) - handlers are toggled as a side effect.
+   */
+  setZoomEnabled(enabled: boolean): void {
+    this.zoomEnabled = enabled;
+    this.applyInteraction();
+  }
+
+  /**
+   * What: Enables/disables each MapLibre interaction handler from the
+   * combined interactionLocked + zoomEnabled state.
+   * Why: The modal lock and the start-screen zoom lock overlap; deriving
+   * every handler from both flags means unlocking after a modal can't
+   * accidentally re-enable zoom that should stay off.
+   * Without it: unlockInteraction() would blindly turn zoom back on.
+   * Inputs: None (reads this.interactionLocked/this.zoomEnabled).
+   * Output: None (void).
+   */
+  private applyInteraction(): void {
     const map = this.requireMap();
-    map.scrollZoom.enable();
-    map.dragPan.enable();
-    map.touchZoomRotate.enable();
-    map.doubleClickZoom.enable();
-    map.boxZoom.enable();
-    map.keyboard.enable();
+    const panOn = !this.interactionLocked;
+    const zoomOn = panOn && this.zoomEnabled;
+    const toggle = (handler: { enable(): void; disable(): void }, on: boolean): void => {
+      if (on) handler.enable();
+      else handler.disable();
+    };
+    toggle(map.dragPan, panOn);
+    toggle(map.scrollZoom, zoomOn);
+    toggle(map.touchZoomRotate, zoomOn);
+    toggle(map.doubleClickZoom, zoomOn);
+    toggle(map.boxZoom, zoomOn);
+    toggle(map.keyboard, zoomOn);
   }
 
   /**

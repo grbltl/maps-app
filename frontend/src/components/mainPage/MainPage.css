@@ -1,11 +1,24 @@
+/* The browser window holds one fixed app frame (#app) containing the map
+   and the controls pinned to its top-left corner. Nothing on the page
+   scrolls, bounces, or zooms - only the map's contents do. */
 html,
-body,
-#app {
+body {
   margin: 0;
   padding: 0;
   width: 100%;
   height: 100%;
   overflow: hidden;
+  overscroll-behavior: none; /* no rubber-band bounce/pull-to-refresh */
+  -webkit-text-size-adjust: 100%; /* no font inflation on rotation */
+}
+
+#app {
+  /* Fixed to the visible viewport: iOS Safari's collapsing toolbars resize
+     it, and MapLibre picks that up as a map resize. */
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  touch-action: manipulation; /* no double-tap page zoom */
 }
 
 .map-container {
@@ -21,8 +34,9 @@ body,
 
 .controls {
   position: absolute;
-  top: 12px;
-  left: 12px;
+  /* Clear the notch/rounded corners on phones (viewport-fit=cover). */
+  top: calc(12px + env(safe-area-inset-top));
+  left: calc(12px + env(safe-area-inset-left));
   z-index: 1;
   background: #fff;
   border-radius: 8px;
@@ -33,7 +47,7 @@ body,
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  max-width: calc(100% - 24px);
+  max-width: calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right));
   box-sizing: border-box;
 }
 
@@ -47,6 +61,8 @@ body,
   padding: 6px 8px;
   border: 1px solid #ccc;
   border-radius: 4px;
+  /* iOS Safari zooms the whole page into any focused input under 16px. */
+  font-size: 16px;
 }
 
 .controls button {

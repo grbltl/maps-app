@@ -13,6 +13,7 @@ class FakeMapAdapter implements MapOutlet {
   fitBoundsCalls: BoundingBox[] = [];
   markerCalls: Coordinates[] = [];
   locked = false;
+  zoomEnabled = true;
 
   async mount(container: HTMLElement): Promise<void> {
     this.mountCalls.push(container);
@@ -31,6 +32,9 @@ class FakeMapAdapter implements MapOutlet {
   }
   unlockInteraction(): void {
     this.locked = false;
+  }
+  setZoomEnabled(enabled: boolean): void {
+    this.zoomEnabled = enabled;
   }
   getNativeMap(): unknown {
     return null;
@@ -64,11 +68,13 @@ class FakeGeocodingProvider implements GeocodingOutlet {
   }
 }
 
-function fakeGeolocation(result: Coordinates | 'deny'): Geolocation {
+function fakeGeolocation(result: Coordinates | 'deny' | 'timeout'): Geolocation {
   return {
     getCurrentPosition: (success: PositionCallback, error?: PositionErrorCallback) => {
       if (result === 'deny') {
         error?.({ code: 1, message: 'denied' } as GeolocationPositionError);
+      } else if (result === 'timeout') {
+        error?.({ code: 3, message: 'timeout' } as GeolocationPositionError);
       } else {
         success({ coords: { longitude: result.lng, latitude: result.lat } } as GeolocationPosition);
       }
@@ -116,6 +122,18 @@ describe('MainPage', () => {
     await mainPage.mount();
     expect(mapAdapter.mountCalls).toHaveLength(1);
     expect(entityProvider.activateCalls).toEqual([entityConfig]);
+  });
+
+  it('keeps the world map un-zoomable until current location locks in', async () => {
+    const { root, mapAdapter, geocodingProvider, mainPage } = setup();
+    geocodingProvider.geocodeQueue.push({ lng: -96.77, lat: 33.0 }, null);
+    await mainPage.mount();
+    expect(mapAdapter.zoomEnabled).toBe(false);
+
+    (root.querySelector('input') as HTMLInputElement).value = '123 Main St';
+    root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    await flushPromises();
+    expect(mapAdapter.zoomEnabled).toBe(true);
   });
 
   it('searching an address geocodes it and instantly fits the camera to the search-radius area (the locking search, not a flyTo)', async () => {
@@ -308,8 +326,27 @@ describe('MainPage', () => {
     locateButton.click();
     await flushPromises();
 
-    expect(root.querySelector('.status')?.textContent).toBe('Location access denied or unavailable.');
+    expect(root.querySelector('.status')?.textContent).toBe(
+      'Location permission denied. Allow it for this site in your browser settings.'
+    );
     expect(root.querySelector('.modal-backdrop')?.classList.contains('hidden')).toBe(true);
+  });
+
+  it.each([
+    ['on plain http', { isSecureContext: false }, 'Location only works on a secure (https) connection.'],
+    ['when locating times out', { geolocation: fakeGeolocation('timeout') }, 'Finding your location timed out. Please try again.'],
+    ['when geolocation is unsupported', { geolocation: null }, 'Could not determine your location.']
+  ])('explains why locating failed %s', async (_case, overrides, expected) => {
+    const { root, mainPage } = setup(overrides);
+    await mainPage.mount();
+
+    const locateButton = Array.from(root.querySelectorAll('button')).find(
+      (b) => b.textContent === 'Use current location'
+    ) as HTMLButtonElement;
+    locateButton.click();
+    await flushPromises();
+
+    expect(root.querySelector('.status')?.textContent).toBe(expected);
   });
 
   it('using current location (the first lock) instantly fits the camera to the search-radius area', async () => {

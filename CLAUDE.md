@@ -11,6 +11,8 @@ An interactive map app (`frontend/`) built as a Vite + TypeScript project, plus 
 
 - `npm install` — install dependencies.
 - `npm run dev` — start the Vite dev server.
+- `npm run dev:phone` — dev server on the LAN over https (self-signed cert). Use this to test on
+  a phone: geolocation only works on secure pages, so plain-http LAN testing always fails "locate".
 - `npm run build` — type-check (`tsc --noEmit`) then production-build.
 - `npm test` — run the Vitest suite once; `npm run test:watch` to watch.
 - Run a single test file: `npx vitest run src/utils/distance.test.ts`.
@@ -140,6 +142,15 @@ hand to avoid a full rerun, as long as both stay in sync.
   *subsequent* search after the lock (ordinary "look at this other place" navigation,
   unrelated to the locked distance anchor) — both `handleSearch` and `handleLocate` capture
   `isFirstLock` before resolving, specifically to decide this.
+- **Only the map zooms, never the page**: `#app` is a `position: fixed` frame with the map and
+  the top-left controls inside it. The viewport meta tag blocks page zoom in most browsers, but
+  iOS Safari ignores `user-scalable=no`, so `MainPage` also cancels Safari's `gesture*` events
+  (MapLibre's pinch uses touch events and is unaffected). The address input must stay ≥16px or
+  iOS zooms the page when it's focused.
+- **Start screen = world map, drag only**: `MapLibreMapAdapter.mount()` fits the whole world to
+  the container height (re-fitted on resize until the camera first moves), so it can only be
+  dragged sideways. `MainPage` calls `setZoomEnabled(false)` after mount and `true` when current
+  location locks in. Rotation/pitch are always off.
 - Distance is shown as straight-line (Haversine), not driving time, deliberately: it's pure
   client-side math with no network cost, whereas driving time would need an external routing
   API call per click.
