@@ -56,7 +56,9 @@ The app is split into two layers that must stay decoupled:
   ones forgotten). Redundant for the file, there so the database swap is cheap from day one. `maplibre/MapLibreEntityConnector` (filtering the style's own vector-tile POI
   layers) still exists as an alternative `EntityProviderOutlet` connector, not wired up.
   `nominatim/NominatimGeocodingConnector` is the `GeocodingOutlet` connector (address search
-  only). Adding a new map vendor (e.g. Google Maps) means writing a new connector behind the
+  only). **Address search is currently switched off**: `MainPageDeps.geocodingProvider` is
+  optional, `MainPage` renders the search bar only when it's injected, and `main.ts` doesn't
+  inject it (a comment there shows the one line to add back). Adding a new map vendor (e.g. Google Maps) means writing a new connector behind the
   same interfaces — the plugs and the composition root's shape don't change.
 - **Composition root** (`src/main.ts`) — the only file that knows which concrete connectors are
   wired together. This is where you'd swap in a different connector.
@@ -159,14 +161,23 @@ hand to avoid a full rerun, as long as both stay in sync.
   iOS zooms the page when it's focused. Controls buttons must not shrink (`flex: 0 0 auto`) — WebKit
   clips a squeezed button's label (the likely cause of an empty Search button seen on iPhone).
 - **Start screen = world map, drag only**: `MapLibreMapAdapter.mount()` fits the whole world to
-  the visible height below the controls panel (`MainPage` reports the panel's bottom edge via
+  the visible height below the controls panel when shown (`MainPage` reports its bottom edge via
   `MapOutlet.setTopInset`, applied as MapLibre camera padding, so later `fitBounds`/`flyTo` also
-  frame below the panel; re-fitted on resize until the camera first moves), so it can only be
+  frame below it; re-fitted on resize until the camera first moves), so it can only be
   dragged sideways. `MainPage` calls `setZoomEnabled(false)` after mount and `true` when current
   location locks in. Rotation/pitch are always off.
-- **Search/locate errors use the native validation bubble on the address field**
-  (`MainPage.showFieldError`: `setCustomValidity` + `reportValidity`), including location
-  failures — a `type="button"` can't show one. Cleared on `input` *and* `blur` (tapping Search
+- **Status-bar strip**: in a Safari tab a page can't draw under the status bar, only tint it.
+  `index.html` sets `theme-color` and the html/body background to a neutral gray per
+  light/dark mode (`#f7f7f7` / `#1c1c1e`); the map frame (`#app`) keeps the ocean-blue loading
+  color. Tried and rejected: matching the strip to the map's top-edge color, and a frosted top
+  bar under the strip (read as a second bar in dark mode). There's no top bar.
+- **Locate button** (`.locate-fab`, outside the search panel): a labeled blue pill at the bottom
+  center on the start screen, gaining `compact` (round, bottom-right re-center button) when
+  location locks in. The toast is raised above it via `--toast-bottom`.
+- **Search/locate errors use the native validation bubble on the address field** when the
+  search bar is shown (`MainPage.showFieldError`: `setCustomValidity` + `reportValidity`),
+  including location failures — a `type="button"` can't show one. Without the search bar,
+  locate errors go to the toast, with Retry only when it can help (not for denied/insecure). The bubble is cleared on `input` *and* `blur` (tapping Search
   blurs first, so a stale error never blocks the next submit). Progress is a centered
   spinner (`beginBusy`/`endBusy`, counted; fades in after 150 ms so instant results don't flash
   it), not text. There is no status line.

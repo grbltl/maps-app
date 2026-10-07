@@ -185,3 +185,79 @@ body {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* Toast sits above the locate button's row (see Toast.css). */
+#app {
+  --toast-bottom: 92px;
+}
+
+/* Floating locate button. Start screen: a labeled blue pill at the bottom
+   center - the one thing to do there. After location locks in ("compact"):
+   a round white re-center button in the bottom-right corner. */
+.locate-fab {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  z-index: 4; /* above the map, below the spinner (5) and toast (6) */
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 52px;
+  margin: 0;
+  padding: 0 22px 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #007aff; /* same blue as the location marker */
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.locate-fab svg {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+
+.locate-fab:hover {
+  background: #0a6cf0;
+}
+
+.locate-fab:active {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.locate-fab:focus-visible {
+  outline: 3px solid rgba(0, 122, 255, 0.45);
+  outline-offset: 3px;
+}
+
+.locate-fab.compact {
+  left: auto;
+  right: calc(16px + env(safe-area-inset-right));
+  transform: none;
+  width: 52px;
+  padding: 0;
+  background: #fff;
+  color: #007aff;
+}
+
+.locate-fab.compact:hover {
+  background: #f2f6ff;
+}
+
+.locate-fab.compact .locate-fab-label {
+  display: none;
+}
+

@@ -3,7 +3,8 @@
 .toast {
   position: absolute;
   left: 50%;
-  bottom: calc(24px + env(safe-area-inset-bottom));
+  /* Containers can raise it (e.g. above a floating button) via --toast-bottom. */
+  bottom: calc(var(--toast-bottom, 24px) + env(safe-area-inset-bottom));
   z-index: 6; /* above the map, controls and spinner; below the modal (10) */
   max-width: calc(100% - 32px);
   box-sizing: border-box;
@@ -11,7 +12,7 @@
   align-items: center;
   gap: 12px;
   padding: 10px 10px 10px 16px;
-  border-radius: 999px;
+  border-radius: 22px; /* pill for one line, still tidy when a longer message wraps */
   background: rgba(32, 33, 36, 0.94);
   color: #fff;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);

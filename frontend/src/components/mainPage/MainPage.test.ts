@@ -534,3 +534,49 @@ describe('MainPage search ring following the map', () => {
     expect(shownToast(root)).toBeNull();
   });
 });
+
+describe('MainPage without address search (locate button only)', () => {
+  function locateButton(root: HTMLElement): HTMLButtonElement {
+    return Array.from(root.querySelectorAll('button')).find(
+      (b) => b.getAttribute('aria-label') === 'Use current location'
+    ) as HTMLButtonElement;
+  }
+
+  it('renders no search bar, just the locate button', async () => {
+    const { root, mainPage } = setup({ geocodingProvider: undefined });
+    await mainPage.mount();
+    expect(root.querySelector('input')).toBeNull();
+    expect(root.querySelector('form')).toBeNull();
+    expect(locateButton(root).textContent).toBe('Use my location');
+  });
+
+  it('shrinks the locate button to its compact corner form once location locks in', async () => {
+    const { root, mainPage } = setup({ geocodingProvider: undefined });
+    await mainPage.mount();
+    expect(locateButton(root).classList.contains('compact')).toBe(false);
+
+    locateButton(root).click();
+    await flushPromises();
+    expect(locateButton(root).classList.contains('compact')).toBe(true);
+  });
+
+  it('shows a denied location in the toast, without a Retry that cannot help', async () => {
+    const { root, mainPage } = setup({ geocodingProvider: undefined, geolocation: fakeGeolocation('deny') });
+    await mainPage.mount();
+    locateButton(root).click();
+    await flushPromises();
+
+    expect(shownToast(root)).toBe('Location permission denied. Allow it for this site in your browser settings.');
+    expect((root.querySelector('.toast-action') as HTMLButtonElement).hidden).toBe(true);
+  });
+
+  it('offers Retry in the toast when locating timed out', async () => {
+    const { root, mainPage } = setup({ geocodingProvider: undefined, geolocation: fakeGeolocation('timeout') });
+    await mainPage.mount();
+    locateButton(root).click();
+    await flushPromises();
+
+    expect(shownToast(root)).toBe('Finding your location timed out. Please try again.');
+    expect((root.querySelector('.toast-action') as HTMLButtonElement).textContent).toBe('Retry');
+  });
+});

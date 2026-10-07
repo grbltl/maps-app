@@ -3,7 +3,6 @@ import { MapLibreMapAdapter } from './adapters/maplibre/MapLibreMapAdapter';
 import { MapEntityConnector } from './adapters/maplibre/MapEntityConnector';
 import { FileEntityDataConnector } from './adapters/file/FileEntityDataConnector';
 import { CachingEntityDataConnector } from './adapters/cache/CachingEntityDataConnector';
-import { NominatimGeocodingConnector } from './adapters/nominatim/NominatimGeocodingConnector';
 import { activeEntityConfig } from './config/entityConfig';
 
 // Composition root: the only place that knows which concrete map/entity/
@@ -25,7 +24,6 @@ import { activeEntityConfig } from './config/entityConfig';
 const mapAdapter = new MapLibreMapAdapter();
 const entityDataSource = new CachingEntityDataConnector(new FileEntityDataConnector());
 const entityProvider = new MapEntityConnector(mapAdapter, entityDataSource);
-const geocodingProvider = new NominatimGeocodingConnector();
 
 const root = document.getElementById('app');
 if (!root) throw new Error('Missing #app root element');
@@ -33,7 +31,9 @@ if (!root) throw new Error('Missing #app root element');
 const mainPage = new MainPage(root, {
   mapAdapter,
   entityProvider,
-  geocodingProvider,
+  // Address search is switched off for now (locate button only). To bring
+  // the search bar back, import NominatimGeocodingConnector and add:
+  //   geocodingProvider: new NominatimGeocodingConnector(),
   entityConfig: activeEntityConfig
 });
 

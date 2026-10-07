@@ -13,10 +13,25 @@
        browser downloads it a second time. -->
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin="anonymous" />
   <link rel="preload" href="https://tiles.openfreemap.org/styles/bright" as="fetch" crossorigin="anonymous" />
-  <!-- Inline so it paints before any JS/CSS loads: the start screen is the
-       world map, mostly ocean, so fill with the style's water color instead
-       of a blank white screen while the map's requests finish. -->
-  <style>html, body { background: #aecfe2; }</style>
+  <!-- Inline so it paints before any JS/CSS loads.
+       - #app (the map's frame) gets the style's water color: the start
+         screen is the world map, mostly ocean, so it's not a blank white
+         screen while the map's requests finish.
+       - html/body get a neutral light/dark gray: Safari tints its status-bar
+         strip from the page background (and theme-color below), so the
+         strip follows light/dark mode like Safari's own toolbars. -->
+  <style>
+    html, body { background: #f7f7f7; }
+    #app { background: #aecfe2; }
+    @media (prefers-color-scheme: dark) { html, body { background: #1c1c1e; } }
+  </style>
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f7f7" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1c1c1e" />
+  <!-- Opened from the Home Screen, run without Safari's bars, with iOS's
+       standard status bar. -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <title>Interactive Map</title>
 </head>
 <body>

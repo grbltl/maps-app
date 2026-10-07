@@ -13,7 +13,8 @@ import { boundsFromCoordinates, buildCirclePolygonCoordinates } from '../../util
 export interface MainPageDeps {
   mapAdapter: MapOutlet;
   entityProvider: EntityProviderOutlet;
-  geocodingProvider: GeocodingOutlet;
+  /** Address search. Omit it to hide the search bar entirely (locate only). */
+  geocodingProvider?: GeocodingOutlet;
   entityConfig: EntityConfig;
   /** Defaults to navigator.geolocation; injectable so tests can fake it. */
   geolocation?: Geolocation | null;
@@ -86,6 +87,19 @@ function locateErrorMessage(error: unknown): string {
 }
 
 /**
+ * What: Whether trying "Use current location" again could succeed.
+ * Why: Retry makes sense after a timeout or a temporary failure, but not
+ * after a permission denial or on plain http - those fail again instantly.
+ * Without it: The toast would offer a Retry that can't work.
+ * Inputs: error - whatever resolveCurrentLocation() rejected with.
+ * Output: true if a retry is worth offering.
+ */
+function isRetryableLocateError(error: unknown): boolean {
+  if (error instanceof InsecureContextError) return false;
+  return (error as { code?: unknown } | null)?.code !== 1;
+}
+
+/**
  * What: The second "plug" - owns the address-search/locate controls, the map
  * container, and the entity-info modal, and wires them to whatever
  * MapOutlet/EntityProviderOutlet/GeocodingOutlet are injected.
@@ -101,8 +115,10 @@ function locateErrorMessage(error: unknown): string {
  */
 export class MainPage {
   private readonly mapContainer: HTMLDivElement;
-  private readonly controls: HTMLDivElement;
-  private readonly addressInput: HTMLInputElement;
+  // The address-search panel; null when no geocodingProvider is injected.
+  private readonly controls: HTMLDivElement | null;
+  private readonly addressInput: HTMLInputElement | null;
+  private readonly locateButton: HTMLButtonElement;
   private readonly spinner: HTMLDivElement;
   private readonly spinnerLabel: HTMLSpanElement;
   // How many search/locate flows are in progress; the spinner shows while > 0.
@@ -131,38 +147,64 @@ export class MainPage {
    * Output: n/a (constructor) - MainPage's DOM exists afterward, map not yet mounted.
    */
   constructor(root: HTMLElement, private readonly deps: MainPageDeps) {
-    const controls = document.createElement('div');
-    controls.className = 'controls';
-    this.controls = controls;
+    const geocodingProvider = deps.geocodingProvider;
+    if (geocodingProvider) {
+      const controls = document.createElement('div');
+      controls.className = 'controls';
 
-    const form = document.createElement('form');
-    form.className = 'address-form';
+      const form = document.createElement('form');
+      form.className = 'address-form';
 
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.placeholder = 'Enter a full address';
-    input.autocomplete = 'off';
-    this.addressInput = input;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = 'Enter a full address';
+      input.autocomplete = 'off';
 
-    const searchButton = document.createElement('button');
-    searchButton.type = 'submit';
-    searchButton.className = 'icon-button';
-    searchButton.setAttribute('aria-label', 'Search');
-    searchButton.title = 'Search';
-    searchButton.innerHTML = SEARCH_ICON_SVG;
+      const searchButton = document.createElement('button');
+      searchButton.type = 'submit';
+      searchButton.className = 'icon-button';
+      searchButton.setAttribute('aria-label', 'Search');
+      searchButton.title = 'Search';
+      searchButton.innerHTML = SEARCH_ICON_SVG;
 
-    form.append(input, searchButton);
+      form.append(input, searchButton);
+      controls.append(form);
 
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        const address = input.value.trim();
+        if (address) void this.handleSearch(geocodingProvider, address);
+        else this.showFieldError(input, 'Please enter an address.');
+      });
+
+      // A field error lasts until the user edits or leaves the field. Leaving
+      // matters: tapping Search blurs the field first, so a stale error (e.g.
+      // a location failure) never blocks the next submit.
+      const clearFieldError = (): void => input.setCustomValidity('');
+      input.addEventListener('input', clearFieldError);
+      input.addEventListener('blur', clearFieldError);
+
+      this.controls = controls;
+      this.addressInput = input;
+    } else {
+      this.controls = null;
+      this.addressInput = null;
+    }
+
+    // Floating locate button: a labeled pill at the bottom center on the
+    // start screen (it's the main action there), shrinking to a round
+    // "re-center" button in the bottom-right corner once location locks in.
     const locateButton = document.createElement('button');
     locateButton.type = 'button';
-    // Icon-only so locate + address field + Search fit one row on a phone;
-    // the label stays available to screen readers and as a tooltip.
-    locateButton.className = 'icon-button';
+    locateButton.className = 'locate-fab';
     locateButton.setAttribute('aria-label', 'Use current location');
     locateButton.title = 'Use current location';
     locateButton.innerHTML = LOCATE_ICON_SVG;
-
-    controls.append(locateButton, form);
+    const locateLabel = document.createElement('span');
+    locateLabel.className = 'locate-fab-label';
+    locateLabel.textContent = 'Use my location';
+    locateButton.append(locateLabel);
+    this.locateButton = locateButton;
 
     this.mapContainer = document.createElement('div');
     this.mapContainer.className = 'map-container';
@@ -181,7 +223,8 @@ export class MainPage {
 
     const modalRoot = document.createElement('div');
 
-    root.append(controls, this.mapContainer, this.spinner, modalRoot);
+    if (this.controls) root.append(this.controls);
+    root.append(this.mapContainer, locateButton, this.spinner, modalRoot);
 
     this.toast = new Toast(root);
 
@@ -189,20 +232,6 @@ export class MainPage {
       onOpen: () => this.deps.mapAdapter.lockInteraction(),
       onClose: () => this.deps.mapAdapter.unlockInteraction()
     });
-
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const address = input.value.trim();
-      if (address) void this.handleSearch(address);
-      else this.showFieldError('Please enter an address.');
-    });
-
-    // A field error lasts until the user edits or leaves the field. Leaving
-    // matters: tapping Search blurs the field first, so a stale error (e.g.
-    // a location failure) never blocks the next submit.
-    const clearFieldError = (): void => input.setCustomValidity('');
-    input.addEventListener('input', clearFieldError);
-    input.addEventListener('blur', clearFieldError);
 
     locateButton.addEventListener('click', () => void this.handleLocate());
 
@@ -230,11 +259,11 @@ export class MainPage {
    */
   async mount(): Promise<void> {
     // Measured before the map exists so its very first frame already fits
-    // the world below the controls, then kept current as the panel resizes
-    // (buttons wrapping on rotation, a long status message).
-    this.deps.mapAdapter.setTopInset(this.controlsBottomPx());
-    if (typeof ResizeObserver !== 'undefined') {
-      new ResizeObserver(() => this.deps.mapAdapter.setTopInset(this.controlsBottomPx())).observe(this.controls);
+    // the world below the controls panel (if shown), then kept current as
+    // it resizes (panel buttons can wrap on rotation).
+    this.deps.mapAdapter.setTopInset(this.overlayBottomPx());
+    if (this.controls && typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(() => this.deps.mapAdapter.setTopInset(this.overlayBottomPx())).observe(this.controls);
     }
     await this.deps.mapAdapter.mount(this.mapContainer);
     // Start screen: the world map can be dragged sideways but not zoomed
@@ -246,15 +275,17 @@ export class MainPage {
   }
 
   /**
-   * What: How far down the map container the controls panel reaches,
-   * plus a small gap.
+   * What: How far down the map container the controls panel (plus a small
+   * gap) reaches, when it's shown.
    * Why: The map keeps that strip clear (MapOutlet.setTopInset) so the whole
-   * world - and later framing - shows below the panel, not under it.
-   * Without it: The top of the world map would be hidden by the panel.
+   * world - and later framing - shows below it, not under it.
+   * Without it: The top of the world map would be hidden.
    * Inputs: None (reads the rendered layout).
-   * Output: Pixels from the map container's top edge; 0 if not laid out.
+   * Output: Pixels from the map container's top edge; 0 if there's no
+   * panel or it isn't laid out.
    */
-  private controlsBottomPx(): number {
+  private overlayBottomPx(): number {
+    if (!this.controls) return 0;
     const panel = this.controls.getBoundingClientRect();
     if (panel.height === 0) return 0;
     const map = this.mapContainer.getBoundingClientRect();
@@ -269,13 +300,35 @@ export class MainPage {
    * button can't show the bubble (type="button" is barred from validation),
    * and typing an address is the fallback when location fails anyway.
    * Without it: Errors would only be shown on the status line.
-   * Inputs: message - the text for the bubble.
+   * Inputs: input - the address field; message - the text for the bubble.
    * Output: None (void). Focuses the field (the browser does this to show
    * the bubble); cleared again by clearFieldError on input/blur.
    */
-  private showFieldError(message: string): void {
-    this.addressInput.setCustomValidity(message);
-    this.addressInput.reportValidity();
+  private showFieldError(input: HTMLInputElement, message: string): void {
+    input.setCustomValidity(message);
+    input.reportValidity();
+  }
+
+  /**
+   * What: Shows why "Use current location" failed - in the address field's
+   * bubble when the search bar is shown, otherwise in the toast.
+   * Why: With the search bar, typing an address is the natural fallback, so
+   * the bubble points there. Without it, the toast is the only place left;
+   * it offers Retry only when retrying can actually help.
+   * Without it: Locate failures would have nowhere to show when the search
+   * bar is hidden.
+   * Inputs: error - whatever resolveCurrentLocation() rejected with.
+   * Output: None (void).
+   */
+  private showLocateError(error: unknown): void {
+    const message = locateErrorMessage(error);
+    if (this.addressInput) {
+      this.showFieldError(this.addressInput, message);
+    } else if (isRetryableLocateError(error)) {
+      this.toast.show(message, { label: 'Retry', onClick: () => void this.handleLocate() });
+    } else {
+      this.toast.show(message);
+    }
   }
 
   /**
@@ -354,13 +407,14 @@ export class MainPage {
    * no-results, or error) - outcomes are reflected via the field bubble,
    * toast, and map rather than a return value.
    */
-  private async handleSearch(address: string): Promise<void> {
+  private async handleSearch(geocodingProvider: GeocodingOutlet, address: string): Promise<void> {
+    const input = this.addressInput as HTMLInputElement; // the search bar exists, or we couldn't be here
     this.toast.hide();
     this.beginBusy('Searching...');
     try {
-      const coordinates = await this.deps.geocodingProvider.geocode(address);
+      const coordinates = await geocodingProvider.geocode(address);
       if (!coordinates) {
-        this.showFieldError('No results found for that address.');
+        this.showFieldError(input, 'No results found for that address.');
         return;
       }
       this.deps.mapAdapter.setMarker(coordinates);
@@ -375,7 +429,7 @@ export class MainPage {
       await this.setCurrentLocationIfUnset(coordinates);
       if (!isFirstLock) this.deps.mapAdapter.flyTo(coordinates, DEFAULT_ZOOM);
     } catch {
-      this.showFieldError('Could not look up that address. Please try again.');
+      this.showFieldError(input, 'Could not look up that address. Please try again.');
     } finally {
       this.endBusy();
     }
@@ -403,7 +457,7 @@ export class MainPage {
       this.deps.mapAdapter.setMarker(coordinates);
       if (!isFirstLock) this.deps.mapAdapter.flyTo(coordinates, DEFAULT_ZOOM);
     } catch (error) {
-      this.showFieldError(locateErrorMessage(error));
+      this.showLocateError(error);
     } finally {
       this.endBusy();
     }
@@ -493,6 +547,7 @@ export class MainPage {
     const ring = buildCirclePolygonCoordinates(coordinates, ENTITY_SEARCH_RADIUS_MILES);
     this.deps.mapAdapter.fitBounds(boundsFromCoordinates(ring));
     this.deps.mapAdapter.setZoomEnabled(true);
+    this.locateButton.classList.add('compact');
 
     await this.searchAround(coordinates);
   }
