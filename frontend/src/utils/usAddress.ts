@@ -58,10 +58,31 @@ const STREET_SUFFIX_ABBREVIATIONS: Record<string, string> = {
 function abbreviateStreetSuffix(road: string | undefined): string | undefined {
   if (!road) return road;
   const words = road.split(' ');
-  const last = words[words.length - 1].toLowerCase();
-  const abbreviation = STREET_SUFFIX_ABBREVIATIONS[last];
-  if (abbreviation) words[words.length - 1] = abbreviation;
+  const lastWord = words[words.length - 1];
+  const abbreviation = STREET_SUFFIX_ABBREVIATIONS[lastWord.toLowerCase()];
+  // All-caps sources (e.g. "MOREHEAD STREET") keep their casing.
+  if (abbreviation) {
+    words[words.length - 1] = lastWord === lastWord.toUpperCase() ? abbreviation.toUpperCase() : abbreviation;
+  }
   return words.join(' ');
+}
+
+// Secondary-unit designators that a unit value may already start with
+// ("SUITE 100", "Ste 4", "#12").
+const UNIT_DESIGNATOR = /^(#|(apt|apartment|bldg|building|dept|fl|floor|lot|rm|room|spc|space|ste|suite|trlr|unit)\b)/i;
+
+/**
+ * What: Appends a unit to a street line, adding "Suite" only when the unit
+ * is a bare number/letter.
+ * Why: Some sources store just "2", others the full "SUITE 100" - blindly
+ * prefixing "Suite" would turn the latter into "Suite SUITE 100".
+ * Without it: Units that already carry a designator would show it twice.
+ * Inputs: street - the street line; unit - the unit, or undefined.
+ * Output: The street line with the unit appended, if any.
+ */
+function appendUnit(street: string, unit: string | undefined): string {
+  if (!unit) return street;
+  return UNIT_DESIGNATOR.test(unit) ? `${street} ${unit}` : `${street} Suite ${unit}`;
 }
 
 /**
@@ -95,7 +116,7 @@ export function formatAddressLines(address: StructuredAddress | null | undefined
   // Downing Street", not "10 Downing St").
   if (address.country_code === 'us') {
     const street = [address.house_number, abbreviateStreetSuffix(address.road)].filter(Boolean).join(' ');
-    const streetWithUnit = address.unit ? `${street} Suite ${address.unit}` : street;
+    const streetWithUnit = appendUnit(street, address.unit);
 
     const state = (address.state && US_STATE_ABBREVIATIONS[address.state]) || address.state;
     const cityStateZip = [locality, [state, address.postcode].filter(Boolean).join(' ')]
@@ -106,7 +127,7 @@ export function formatAddressLines(address: StructuredAddress | null | undefined
   }
 
   const street = [address.house_number, address.road].filter(Boolean).join(' ');
-  const streetWithUnit = address.unit ? `${street} Suite ${address.unit}` : street;
+  const streetWithUnit = appendUnit(street, address.unit);
 
   // Non-US: no standard state-abbreviation convention, so keep the state name and include the country.
   const region = [address.state, address.postcode].filter(Boolean).join(' ');

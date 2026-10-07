@@ -30,6 +30,24 @@ describe('formatAddressLines', () => {
     expect(lines).toEqual(['19251 Preston Rd Suite 2', 'Dallas, TX 75252']);
   });
 
+  it('does not double the designator when the unit already carries one', () => {
+    // Real-world case: the restaurant inspection CSV stores "SUITE 100" / "UNIT 12".
+    const lines = formatAddressLines({
+      road: '500 E MOREHEAD ST',
+      unit: 'SUITE 100',
+      city: 'CHARLOTTE',
+      state: 'NC',
+      postcode: '28202',
+      country_code: 'us'
+    });
+    expect(lines).toEqual(['500 E MOREHEAD ST SUITE 100', 'CHARLOTTE, NC 28202']);
+    expect(formatAddressLines({ road: 'Main St', unit: '#4', country_code: 'us' })).toEqual(['Main St #4']);
+  });
+
+  it('keeps an all-caps road all-caps when abbreviating its suffix', () => {
+    expect(formatAddressLines({ road: '3070 DERITA ROAD', country_code: 'us' })).toEqual(['3070 DERITA RD']);
+  });
+
   it('omits the house number when OSM has no number tagged, rather than showing a blank', () => {
     // Real-world case: "brunch TIME" in Plano, TX has no addr:housenumber in OSM.
     const lines = formatAddressLines({

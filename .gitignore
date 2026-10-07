@@ -1,3 +1,4 @@
 .*
 node_modules/
 dist/
+restaurants-inspection-report.csv

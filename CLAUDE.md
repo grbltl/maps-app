@@ -42,8 +42,10 @@ The app is split into two layers that must stay decoupled:
   those within the radius (`filterWithinRadius`, Haversine), and renders them as its own GeoJSON
   circle layer (entities with a deal active today get a larger green marker) plus a dashed-ring
   polygon layer showing the exact radius. `file/FileEntityDataConnector` is the active
-  `EntityDataOutlet` connector — the data file and its format aren't decided yet, so it returns
-  `[]` and the map shows no entities. A database-backed `EntityDataOutlet` connector (calling our
+  `EntityDataOutlet` connector — it fetches `public/restaurants.json` once (cached; a failed
+  fetch rejects and is retried on the next call) and maps each flat record (name, lat/lng,
+  street/unit/city/state/zip) to an `Entity`, formatting the address with `formatAddressLines`.
+  That JSON is generated, never hand-edited — see "Restaurant data" below. A database-backed `EntityDataOutlet` connector (calling our
   own backend) is planned for when the data outgrows a file; swapping it in is a one-line change
   in `main.ts`. `maplibre/MapLibreEntityConnector` (filtering the style's own vector-tile POI
   layers) still exists as an alternative `EntityProviderOutlet` connector, not wired up.
@@ -67,11 +69,37 @@ Shared, provider-agnostic logic lives in `src/utils/`: `distance.ts` (Haversine 
 `filterWithinRadius` — plain math, deliberately not behind an interface, since there's
 nothing to swap), `deals.ts` (which deals are active today), `usAddress.ts` (US
 mailing-address formatting: abbreviated street suffix, two-line `street` / `City, ST zip`
-with no comma before the zip; currently unused by app code, kept for formatting structured
-addresses once the data file exists), and `geoCircle.ts` (hand-rolled geodesic circle math —
+with no comma before the zip; a unit that already carries a designator like `SUITE 100` isn't
+prefixed with another "Suite"), and `geoCircle.ts` (hand-rolled geodesic circle math —
 no geometry library dependency — used both to draw the visual search-radius ring and to
 compute the `BoundingBox` passed to `MapOutlet.fitBounds()`; always called with the *same*
 `radiusMiles` as the entity filter so what's drawn/framed never mismatches what's included).
+
+## Restaurant data
+
+`frontend/public/restaurants.json` is built from the county restaurant inspection export
+(`restaurants-inspection-report.csv` in the repo root, gitignored — not tracked) by
+`node scripts/build-restaurant-data.mjs ../restaurants-inspection-report.csv` (run from
+`frontend/`, ~5 min). Only the premises name and address (columns 5–10) are kept. The script:
+
+- keeps `1 - Restaurant` rows and de-duplicates by `State ID#` — the CSV has one row per
+  inspection, and the **newest inspection's row wins**, so a data fix must go on that row;
+- collapses spaces, drops periods, and snaps rare city spellings to a common one within 2
+  edits (`CHAROTTE` → `CHARLOTTE`), logging each fix;
+- geocodes once at build time, never in the browser: US Census batch geocoder first, then
+  Nominatim (1 req/s, up to 3 attempts — its top result varies between calls) for misses.
+  A Nominatim result is accepted only if its house number **and** zip match ours; without
+  that check it returns similarly named streets elsewhere. County suffixes (`BV`, `PY`, `WY`,
+  `HY`, ...) are rewritten to USPS forms for geocoding only — the output keeps the CSV spelling;
+- takes hand-entered coordinates from `restaurant-coordinate-overrides.csv` (repo root, keyed
+  by `State ID#`, `coordinates` column = `lat, lng` as Google Maps copies it). Those win over
+  geocoding. Only the coordinates are read from it — its name/address columns are labels; fix
+  displayed addresses in the inspection CSV. The script creates this file only if it's missing
+  and never rewrites it; closed/non-restaurant places were deliberately deleted from it and
+  stay off the map. Restaurants with no coordinates are listed on the console each run.
+
+A one-field correction (e.g. a wrong state) can be applied to both the CSV and the JSON by
+hand to avoid a full rerun, as long as both stay in sync.
 
 ## Known constraints/decisions worth preserving
 
