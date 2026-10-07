@@ -36,6 +36,10 @@ class FakeMapAdapter implements MapOutlet {
   setZoomEnabled(enabled: boolean): void {
     this.zoomEnabled = enabled;
   }
+  topInsetCalls: Array<{ px: number; mounted: boolean }> = [];
+  setTopInset(px: number): void {
+    this.topInsetCalls.push({ px, mounted: this.mountCalls.length > 0 });
+  }
   private moveStartHandlers: Array<() => void> = [];
   private moveEndHandlers: Array<(center: Coordinates) => void> = [];
   onMoveStart(handler: () => void): void {
@@ -95,6 +99,12 @@ function fakeGeolocation(result: Coordinates | 'deny' | 'timeout'): Geolocation 
   } as unknown as Geolocation;
 }
 
+/** The load-error toast's message while it's showing, else null. */
+function shownToast(root: HTMLElement): string | null {
+  const toast = root.querySelector('.toast');
+  return toast?.classList.contains('visible') ? (toast.querySelector('.toast-message')?.textContent ?? '') : null;
+}
+
 async function flushPromises(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -134,6 +144,9 @@ describe('MainPage', () => {
     const { mapAdapter, entityProvider, entityConfig, mainPage } = setup();
     await mainPage.mount();
     expect(mapAdapter.mountCalls).toHaveLength(1);
+    // The controls' inset is reported before the map exists, so the first
+    // frame already fits the world below them.
+    expect(mapAdapter.topInsetCalls[0]?.mounted).toBe(false);
     expect(entityProvider.activateCalls).toEqual([entityConfig]);
   });
 
@@ -231,7 +244,7 @@ describe('MainPage', () => {
     expect(entityProvider.showNearCalls).toEqual([{ center: { lng: -96.77, lat: 33.0 }, radiusMiles: 5 }]);
   });
 
-  it('surfaces a status message (but still locks in the location and fits the camera) when showNear rejects', async () => {
+  it('shows the load-error toast (but still locks in the location and fits the camera) when showNear rejects', async () => {
     const { root, mapAdapter, geocodingProvider, entityProvider, mainPage } = setup();
     entityProvider.showNearShouldFail = true;
     const coordinates = { lng: -96.77, lat: 33.0 };
@@ -242,11 +255,11 @@ describe('MainPage', () => {
     root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
     await flushPromises();
 
-    expect(root.querySelector('.status')?.textContent).toBe('Could not load nearby restaurants - try reloading the page.');
+    expect(shownToast(root)).toBe("Couldn't load restaurants.");
     expect(mapAdapter.fitBoundsCalls).toEqual([expectedLockBounds(coordinates)]);
   });
 
-  it('does not re-show the showNear failure status on a later, already-locked search', async () => {
+  it('hides the load-error toast on a later, already-locked search', async () => {
     const firstLocation = { lng: -96.77, lat: 33.0 };
     const secondLocation = { lng: -95.0, lat: 29.76 };
 
@@ -265,7 +278,7 @@ describe('MainPage', () => {
     submitSearch('second address, far away');
     await flushPromises();
 
-    expect(root.querySelector('.status')?.textContent).toBe('');
+    expect(shownToast(root)).toBeNull();
   });
 
   it('clicking an entity shows every detail its data source provided, plus distance once resolved', async () => {
@@ -334,12 +347,12 @@ describe('MainPage', () => {
     await mainPage.mount();
 
     const locateButton = Array.from(root.querySelectorAll('button')).find(
-      (b) => b.textContent === 'Use current location'
+      (b) => b.getAttribute('aria-label') === 'Use current location'
     ) as HTMLButtonElement;
     locateButton.click();
     await flushPromises();
 
-    expect(root.querySelector('.status')?.textContent).toBe(
+    expect((root.querySelector('input') as HTMLInputElement).validationMessage).toBe(
       'Location permission denied. Allow it for this site in your browser settings.'
     );
     expect(root.querySelector('.modal-backdrop')?.classList.contains('hidden')).toBe(true);
@@ -354,12 +367,59 @@ describe('MainPage', () => {
     await mainPage.mount();
 
     const locateButton = Array.from(root.querySelectorAll('button')).find(
-      (b) => b.textContent === 'Use current location'
+      (b) => b.getAttribute('aria-label') === 'Use current location'
     ) as HTMLButtonElement;
     locateButton.click();
     await flushPromises();
 
-    expect(root.querySelector('.status')?.textContent).toBe(expected);
+    expect((root.querySelector('input') as HTMLInputElement).validationMessage).toBe(expected);
+  });
+
+  it('shows the centered spinner (not status text) while a search runs, and hides it after', async () => {
+    const { root, geocodingProvider, mainPage } = setup();
+    geocodingProvider.geocodeQueue.push({ lng: -96.77, lat: 33.0 });
+    await mainPage.mount();
+    const spinner = root.querySelector('.busy-spinner') as HTMLElement;
+
+    (root.querySelector('input') as HTMLInputElement).value = '123 Main St';
+    root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    expect(spinner.classList.contains('visible')).toBe(true);
+    expect(spinner.textContent).toBe('Searching...');
+    expect(shownToast(root)).toBeNull();
+
+    await flushPromises();
+    expect(spinner.classList.contains('visible')).toBe(false);
+  });
+
+  it('shows a native validation bubble when Search is hit with an empty address', async () => {
+    const { root, geocodingProvider, mainPage } = setup();
+    await mainPage.mount();
+    const input = root.querySelector('input') as HTMLInputElement;
+    let bubbles = 0;
+    input.addEventListener('invalid', () => bubbles++);
+
+    input.value = '   ';
+    root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+
+    expect(input.validationMessage).toBe('Please enter an address.');
+    expect(bubbles).toBe(1);
+    expect(geocodingProvider.geocodeCalls).toEqual([]);
+  });
+
+  it('shows "no results" in the bubble, and clears it once the user edits the field', async () => {
+    const { root, geocodingProvider, mainPage } = setup();
+    geocodingProvider.geocodeQueue.push(null);
+    await mainPage.mount();
+    const input = root.querySelector('input') as HTMLInputElement;
+
+    input.value = 'nowhere';
+    root.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    await flushPromises();
+    expect(input.validationMessage).toBe('No results found for that address.');
+    expect(shownToast(root)).toBeNull();
+
+    input.dispatchEvent(new Event('input'));
+    expect(input.validationMessage).toBe('');
   });
 
   it('using current location (the first lock) instantly fits the camera to the search-radius area', async () => {
@@ -367,7 +427,7 @@ describe('MainPage', () => {
     await mainPage.mount();
 
     const locateButton = Array.from(root.querySelectorAll('button')).find(
-      (b) => b.textContent === 'Use current location'
+      (b) => b.getAttribute('aria-label') === 'Use current location'
     ) as HTMLButtonElement;
     locateButton.click();
     await flushPromises();
@@ -390,7 +450,7 @@ describe('MainPage search ring following the map', () => {
     const context = setup(overrides);
     await context.mainPage.mount();
     const locateButton = Array.from(context.root.querySelectorAll('button')).find(
-      (b) => b.textContent === 'Use current location'
+      (b) => b.getAttribute('aria-label') === 'Use current location'
     ) as HTMLButtonElement;
     locateButton.click();
     await vi.advanceTimersByTimeAsync(0);
@@ -446,18 +506,31 @@ describe('MainPage search ring following the map', () => {
     expect(lines).toContain(formatDistanceMiles(haversineDistanceMiles(home, entityCoordinates)));
   });
 
-  it('shows a status message when a settled search fails, and clears it once one succeeds', async () => {
+  it('shows the load-error toast when a settled search fails, and hides it once one succeeds', async () => {
     const { root, mapAdapter, entityProvider } = await setupLocked();
-    const status = () => root.querySelector('.status')?.textContent;
 
     entityProvider.showNearShouldFail = true;
     mapAdapter.drag(elsewhere);
     await vi.advanceTimersByTimeAsync(500);
-    expect(status()).toBe('Could not load restaurants here - move the map to try again.');
+    expect(shownToast(root)).toBe("Couldn't load restaurants.");
 
     entityProvider.showNearShouldFail = false;
     mapAdapter.drag(home);
     await vi.advanceTimersByTimeAsync(500);
-    expect(status()).toBe('');
+    expect(shownToast(root)).toBeNull();
+  });
+
+  it("the toast's Retry re-searches around the current ring", async () => {
+    const { root, mapAdapter, entityProvider } = await setupLocked();
+    entityProvider.showNearShouldFail = true;
+    mapAdapter.drag(elsewhere);
+    await vi.advanceTimersByTimeAsync(500);
+
+    entityProvider.showNearShouldFail = false;
+    (root.querySelector('.toast-action') as HTMLButtonElement).click();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(entityProvider.showNearCalls[entityProvider.showNearCalls.length - 1]).toEqual({ center: elsewhere, radiusMiles: 5 });
+    expect(shownToast(root)).toBeNull();
   });
 });

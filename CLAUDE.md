@@ -24,7 +24,8 @@ The app is split into two layers that must stay decoupled:
 - **Plugs** (`src/components/`) — reusable UI, provider-agnostic. `Modal` is a generic dialog
   (title + ordered info lines + exit button; a line can be text, a tight multi-line block, or
   a link — links are only made live for http(s) URLs); it has zero knowledge of maps,
-  entities, or geocoding. `MainPage` owns the address-search/locate controls and the map
+  entities, or geocoding. `Toast` is likewise generic (bottom-center pill, message + optional
+  action button, fades out after ~6 s). `MainPage` owns the address-search/locate controls and the map
   container, and wires the Modal to whatever connectors are injected into it via constructor DI
   (`MainPageDeps`). `MainPage` always starts on a world map — that default lives in the map
   connector's `mount()`, not in `MainPage`.
@@ -138,14 +139,12 @@ hand to avoid a full rerun, as long as both stay in sync.
   start-screen world map. Distance in the modal is always from the locked current location.
   `MapEntityConnector.showNear()` is latest-call-wins (a superseded call neither draws nor
   rejects) and drops already-drawn entities outside the new ring immediately, before the data
-  arrives. A settled-search failure shows its own status message, cleared by the next success.
-- A lock-time `showNear()` failure is swallowed inside `setCurrentLocationIfUnset`
-  (logged, not thrown) and recorded in `MainPage.lastEntitySearchFailed`, which
-  `handleSearch`/`handleLocate` check right after awaiting it to show a status message — it's
-  *not* set directly as a status message from inside `setCurrentLocationIfUnset` itself,
-  because both callers unconditionally clear/overwrite the status line immediately afterward
-  for their own "Searching.../Locating..." lifecycle, which would silently wipe out an error
-  message set there.
+  arrives.
+- **Every entity search goes through `MainPage.searchAround`** (lock-time, settled-map, and
+  Retry). It never rejects: a `showNear()` failure is logged and shows the `Toast`
+  "Couldn't load restaurants." with a Retry button (re-searches `lastSearchCenter` with the
+  spinner); any later successful search hides it. The location/map flow has already succeeded
+  either way. `handleSearch`/`handleLocate` hide the toast when they start.
 - **The locking search/locate instantly `fitBounds`s to the whole search-radius area instead of
   `flyTo`-ing to a point** — computed and applied *before* `showNear()` is awaited, so the
   camera snap doesn't wait on the data source. `MapEntityConnector` likewise draws the ring
@@ -157,11 +156,20 @@ hand to avoid a full rerun, as long as both stay in sync.
   the top-left controls inside it. The viewport meta tag blocks page zoom in most browsers, but
   iOS Safari ignores `user-scalable=no`, so `MainPage` also cancels Safari's `gesture*` events
   (MapLibre's pinch uses touch events and is unaffected). The address input must stay ≥16px or
-  iOS zooms the page when it's focused.
+  iOS zooms the page when it's focused. Controls buttons must not shrink (`flex: 0 0 auto`) — WebKit
+  clips a squeezed button's label (the likely cause of an empty Search button seen on iPhone).
 - **Start screen = world map, drag only**: `MapLibreMapAdapter.mount()` fits the whole world to
-  the container height (re-fitted on resize until the camera first moves), so it can only be
+  the visible height below the controls panel (`MainPage` reports the panel's bottom edge via
+  `MapOutlet.setTopInset`, applied as MapLibre camera padding, so later `fitBounds`/`flyTo` also
+  frame below the panel; re-fitted on resize until the camera first moves), so it can only be
   dragged sideways. `MainPage` calls `setZoomEnabled(false)` after mount and `true` when current
   location locks in. Rotation/pitch are always off.
+- **Search/locate errors use the native validation bubble on the address field**
+  (`MainPage.showFieldError`: `setCustomValidity` + `reportValidity`), including location
+  failures — a `type="button"` can't show one. Cleared on `input` *and* `blur` (tapping Search
+  blurs first, so a stale error never blocks the next submit). Progress is a centered
+  spinner (`beginBusy`/`endBusy`, counted; fades in after 150 ms so instant results don't flash
+  it), not text. There is no status line.
 - Distance is shown as straight-line (Haversine), not driving time, deliberately: it's pure
   client-side math with no network cost, whereas driving time would need an external routing
   API call per click.

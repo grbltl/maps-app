@@ -74,6 +74,20 @@ export interface MapOutlet {
   setMarker(coordinates: Coordinates): void;
 
   /**
+   * What: Tells the map that the top `px` pixels of its container are
+   * covered by overlay UI (the controls panel).
+   * Why: The start-screen world view must be fully visible below the
+   * controls, and later camera framing (fitBounds/flyTo) should center on
+   * the visible part, not slide under the panel.
+   * Without it: The top of the world - and of any framed area - would be
+   * hidden behind the controls.
+   * Inputs: px - height of the covered strip, from the container's top edge.
+   * Output: None (void). May be called before mount(); the value is then
+   * applied when the map is created.
+   */
+  setTopInset(px: number): void;
+
+  /**
    * What: Registers a handler called whenever the camera starts moving
    * (user drag/zoom or a programmatic flyTo/fitBounds).
    * Why: MainPage waits for the map to sit still before re-searching; a new

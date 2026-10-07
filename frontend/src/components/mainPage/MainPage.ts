@@ -4,6 +4,7 @@ import type { EntityProviderOutlet } from '../../core/interfaces/EntityProviderO
 import type { GeocodingOutlet } from '../../core/interfaces/GeocodingOutlet';
 import type { Coordinates, Entity, EntityConfig } from '../../core/types';
 import { Modal, type ModalLine } from '../modal/Modal';
+import { Toast } from '../toast/Toast';
 import { haversineDistanceMiles, formatDistanceMiles } from '../../utils/distance';
 import { activeDeals } from '../../utils/deals';
 import { getCurrentPosition } from '../../utils/geolocation';
@@ -41,8 +42,23 @@ const SETTLE_DELAY_MS = 500;
 // lock's own fitBounds landing a few meters off the exact location).
 const MIN_RESEARCH_MOVE_MILES = 0.1;
 
-const ENTITY_LOAD_ERROR = 'Could not load nearby restaurants - try reloading the page.';
-const ENTITY_RELOAD_ERROR = 'Could not load restaurants here - move the map to try again.';
+// Magnifier for the icon-only Search button. Static markup, so innerHTML is
+// safe here.
+const SEARCH_ICON_SVG =
+  '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>';
+
+// "Locate me" crosshair for the icon-only locate button. Static markup, so
+// innerHTML is safe here.
+const LOCATE_ICON_SVG =
+  '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" ' +
+  'fill="currentColor" stroke="none"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
+
+// Breathing room between the controls panel and the top of the world map.
+const CONTROLS_GAP_PX = 8;
+
+const ENTITY_LOAD_ERROR = "Couldn't load restaurants.";
 
 // Browsers only hand out location to secure pages (https, or localhost).
 class InsecureContextError extends Error {}
@@ -85,19 +101,17 @@ function locateErrorMessage(error: unknown): string {
  */
 export class MainPage {
   private readonly mapContainer: HTMLDivElement;
-  private readonly statusEl: HTMLDivElement;
+  private readonly controls: HTMLDivElement;
+  private readonly addressInput: HTMLInputElement;
+  private readonly spinner: HTMLDivElement;
+  private readonly spinnerLabel: HTMLSpanElement;
+  // How many search/locate flows are in progress; the spinner shows while > 0.
+  private busyCount = 0;
   private readonly modal: Modal;
+  private readonly toast: Toast;
 
   private currentLocation: Coordinates | null = null;
   private modalRequestId = 0;
-  // Set by setCurrentLocationIfUnset's showNear() outcome; read by
-  // handleSearch/handleLocate right after awaiting it, specifically for the
-  // locking call (see those methods for why this can't just be a status
-  // message set directly inside setCurrentLocationIfUnset - both callers
-  // unconditionally clear/overwrite the status line immediately afterward
-  // for their own "Searching.../Locating..." lifecycle, which would wipe out
-  // an error message set from inside that shared helper).
-  private lastEntitySearchFailed = false;
   // Where the search ring is currently centered: current location at first,
   // then wherever the map settled. Null until current location locks in -
   // the start-screen world map never searches.
@@ -119,6 +133,7 @@ export class MainPage {
   constructor(root: HTMLElement, private readonly deps: MainPageDeps) {
     const controls = document.createElement('div');
     controls.className = 'controls';
+    this.controls = controls;
 
     const form = document.createElement('form');
     form.className = 'address-form';
@@ -127,28 +142,48 @@ export class MainPage {
     input.type = 'text';
     input.placeholder = 'Enter a full address';
     input.autocomplete = 'off';
+    this.addressInput = input;
 
     const searchButton = document.createElement('button');
     searchButton.type = 'submit';
-    searchButton.textContent = 'Search';
+    searchButton.className = 'icon-button';
+    searchButton.setAttribute('aria-label', 'Search');
+    searchButton.title = 'Search';
+    searchButton.innerHTML = SEARCH_ICON_SVG;
 
     form.append(input, searchButton);
 
     const locateButton = document.createElement('button');
     locateButton.type = 'button';
-    locateButton.textContent = 'Use current location';
+    // Icon-only so locate + address field + Search fit one row on a phone;
+    // the label stays available to screen readers and as a tooltip.
+    locateButton.className = 'icon-button';
+    locateButton.setAttribute('aria-label', 'Use current location');
+    locateButton.title = 'Use current location';
+    locateButton.innerHTML = LOCATE_ICON_SVG;
 
-    this.statusEl = document.createElement('div');
-    this.statusEl.className = 'status';
-
-    controls.append(form, locateButton, this.statusEl);
+    controls.append(locateButton, form);
 
     this.mapContainer = document.createElement('div');
     this.mapContainer.className = 'map-container';
 
+    // Centered progress spinner for search/locate. Purely visual: it never
+    // blocks touches, and the label is for screen readers only.
+    this.spinner = document.createElement('div');
+    this.spinner.className = 'busy-spinner';
+    this.spinner.setAttribute('role', 'status');
+    this.spinner.setAttribute('aria-live', 'polite');
+    const spinnerRing = document.createElement('div');
+    spinnerRing.className = 'busy-spinner-ring';
+    this.spinnerLabel = document.createElement('span');
+    this.spinnerLabel.className = 'visually-hidden';
+    this.spinner.append(spinnerRing, this.spinnerLabel);
+
     const modalRoot = document.createElement('div');
 
-    root.append(controls, this.mapContainer, modalRoot);
+    root.append(controls, this.mapContainer, this.spinner, modalRoot);
+
+    this.toast = new Toast(root);
 
     this.modal = new Modal(modalRoot, {
       onOpen: () => this.deps.mapAdapter.lockInteraction(),
@@ -159,7 +194,15 @@ export class MainPage {
       event.preventDefault();
       const address = input.value.trim();
       if (address) void this.handleSearch(address);
+      else this.showFieldError('Please enter an address.');
     });
+
+    // A field error lasts until the user edits or leaves the field. Leaving
+    // matters: tapping Search blurs the field first, so a stale error (e.g.
+    // a location failure) never blocks the next submit.
+    const clearFieldError = (): void => input.setCustomValidity('');
+    input.addEventListener('input', clearFieldError);
+    input.addEventListener('blur', clearFieldError);
 
     locateButton.addEventListener('click', () => void this.handleLocate());
 
@@ -186,6 +229,13 @@ export class MainPage {
    * discovery is active.
    */
   async mount(): Promise<void> {
+    // Measured before the map exists so its very first frame already fits
+    // the world below the controls, then kept current as the panel resizes
+    // (buttons wrapping on rotation, a long status message).
+    this.deps.mapAdapter.setTopInset(this.controlsBottomPx());
+    if (typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(() => this.deps.mapAdapter.setTopInset(this.controlsBottomPx())).observe(this.controls);
+    }
     await this.deps.mapAdapter.mount(this.mapContainer);
     // Start screen: the world map can be dragged sideways but not zoomed
     // until current location locks in (see setCurrentLocationIfUnset).
@@ -196,16 +246,98 @@ export class MainPage {
   }
 
   /**
-   * What: Sets the status line's text (search/locate progress or errors).
-   * Why: Gives the user feedback for the address form and locate button
-   * without needing a separate notification system.
-   * Without it: Searching or locating would appear to do nothing while in
-   * progress, and failures would be silent.
-   * Inputs: message - the text to show; pass '' to clear it.
-   * Output: None (void) - updates the rendered status line as a side effect.
+   * What: How far down the map container the controls panel reaches,
+   * plus a small gap.
+   * Why: The map keeps that strip clear (MapOutlet.setTopInset) so the whole
+   * world - and later framing - shows below the panel, not under it.
+   * Without it: The top of the world map would be hidden by the panel.
+   * Inputs: None (reads the rendered layout).
+   * Output: Pixels from the map container's top edge; 0 if not laid out.
    */
-  private setStatus(message: string): void {
-    this.statusEl.textContent = message;
+  private controlsBottomPx(): number {
+    const panel = this.controls.getBoundingClientRect();
+    if (panel.height === 0) return 0;
+    const map = this.mapContainer.getBoundingClientRect();
+    return Math.max(0, Math.ceil(panel.bottom - map.top + CONTROLS_GAP_PX));
+  }
+
+  /**
+   * What: Shows a message in the browser's native validation bubble on the
+   * address field.
+   * Why: Search and locate failures read as a native prompt on the field
+   * rather than a line of red text. Location errors anchor here too - a
+   * button can't show the bubble (type="button" is barred from validation),
+   * and typing an address is the fallback when location fails anyway.
+   * Without it: Errors would only be shown on the status line.
+   * Inputs: message - the text for the bubble.
+   * Output: None (void). Focuses the field (the browser does this to show
+   * the bubble); cleared again by clearFieldError on input/blur.
+   */
+  private showFieldError(message: string): void {
+    this.addressInput.setCustomValidity(message);
+    this.addressInput.reportValidity();
+  }
+
+  /**
+   * What: Shows the centered spinner (or keeps it showing) for one more
+   * in-progress search/locate flow.
+   * Why: Tells the user something is happening without a "Searching..."
+   * line in the controls. Counted, so overlapping flows (a locate while a
+   * search is still running) keep it up until the last one ends.
+   * Without it: A search would look like nothing happened until the map moved.
+   * Inputs: label - what screen readers announce (e.g. "Searching...").
+   * Output: None (void). The CSS fades it in only after a short delay, so
+   * instant results don't flash it.
+   */
+  private beginBusy(label: string): void {
+    this.busyCount++;
+    this.spinnerLabel.textContent = label;
+    this.spinner.classList.add('visible');
+  }
+
+  /**
+   * What: Ends one in-progress flow started with beginBusy(), hiding the
+   * spinner once none are left.
+   * Why: See beginBusy().
+   * Without it: The spinner would never go away.
+   * Inputs: None.
+   * Output: None (void).
+   */
+  private endBusy(): void {
+    this.busyCount = Math.max(0, this.busyCount - 1);
+    if (this.busyCount > 0) return;
+    this.spinner.classList.remove('visible');
+    this.spinnerLabel.textContent = '';
+  }
+
+  /**
+   * What: Shows the "couldn't load restaurants" toast with a Retry button.
+   * Why: A failed entity search isn't about anything the user typed, so it
+   * gets a non-blocking toast rather than the address field's bubble.
+   * Without it: A failed load would just leave the ring empty, unexplained.
+   * Inputs: None.
+   * Output: None (void).
+   */
+  private showLoadError(): void {
+    this.toast.show(ENTITY_LOAD_ERROR, { label: 'Retry', onClick: () => void this.retryEntitySearch() });
+  }
+
+  /**
+   * What: Re-runs the entity search around the current ring, with the spinner.
+   * Why: The toast's Retry - so a failed load never needs a page reload.
+   * Without it: The only way to retry would be moving the map.
+   * Inputs: None (uses this.lastSearchCenter).
+   * Output: A Promise that resolves once the retry settles (failure shows
+   * the toast again, via searchAround).
+   */
+  private async retryEntitySearch(): Promise<void> {
+    if (!this.lastSearchCenter) return;
+    this.beginBusy('Loading restaurants...');
+    try {
+      await this.searchAround(this.lastSearchCenter);
+    } finally {
+      this.endBusy();
+    }
   }
 
   /**
@@ -219,15 +351,16 @@ export class MainPage {
    * geolocation-free way to set "current location".
    * Inputs: address - the trimmed, non-empty address string from the input.
    * Output: A Promise that resolves once the flow completes (success,
-   * no-results, or error) - all outcomes are reflected via setStatus/map
-   * calls rather than a return value.
+   * no-results, or error) - outcomes are reflected via the field bubble,
+   * toast, and map rather than a return value.
    */
   private async handleSearch(address: string): Promise<void> {
-    this.setStatus('Searching...');
+    this.toast.hide();
+    this.beginBusy('Searching...');
     try {
       const coordinates = await this.deps.geocodingProvider.geocode(address);
       if (!coordinates) {
-        this.setStatus('No results found for that address.');
+        this.showFieldError('No results found for that address.');
         return;
       }
       this.deps.mapAdapter.setMarker(coordinates);
@@ -240,15 +373,11 @@ export class MainPage {
       // other place" navigation, unrelated to the locked distance anchor.
       const isFirstLock = !this.currentLocation;
       await this.setCurrentLocationIfUnset(coordinates);
-
-      if (isFirstLock && this.lastEntitySearchFailed) {
-        this.setStatus(ENTITY_LOAD_ERROR);
-      } else {
-        this.setStatus('');
-        if (!isFirstLock) this.deps.mapAdapter.flyTo(coordinates, DEFAULT_ZOOM);
-      }
+      if (!isFirstLock) this.deps.mapAdapter.flyTo(coordinates, DEFAULT_ZOOM);
     } catch {
-      this.setStatus('Could not look up that address. Please try again.');
+      this.showFieldError('Could not look up that address. Please try again.');
+    } finally {
+      this.endBusy();
     }
   }
 
@@ -260,26 +389,23 @@ export class MainPage {
    * Inputs: None (uses this.currentLocation/this.deps internally via
    * resolveCurrentLocation()).
    * Output: A Promise that resolves once the flow completes (success or
-   * denied/unavailable) - reflected via setStatus/map calls rather than a
-   * return value.
+   * denied/unavailable) - reflected via the field bubble, toast, and map
+   * rather than a return value.
    */
   private async handleLocate(): Promise<void> {
-    this.setStatus('Locating...');
+    this.toast.hide();
+    this.beginBusy('Locating...');
     try {
       // Captured before resolving: see handleSearch for why only a
       // subsequent (already-locked) locate re-use should fly to a point.
       const isFirstLock = !this.currentLocation;
       const coordinates = await this.resolveCurrentLocation();
       this.deps.mapAdapter.setMarker(coordinates);
-
-      if (isFirstLock && this.lastEntitySearchFailed) {
-        this.setStatus(ENTITY_LOAD_ERROR);
-      } else {
-        this.setStatus('');
-        if (!isFirstLock) this.deps.mapAdapter.flyTo(coordinates, DEFAULT_ZOOM);
-      }
+      if (!isFirstLock) this.deps.mapAdapter.flyTo(coordinates, DEFAULT_ZOOM);
     } catch (error) {
-      this.setStatus(locateErrorMessage(error));
+      this.showFieldError(locateErrorMessage(error));
+    } finally {
+      this.endBusy();
     }
   }
 
@@ -353,12 +479,9 @@ export class MainPage {
    * Inputs: coordinates - the newly-resolved location; ignored if a location
    * was already locked in.
    * Output: A Promise that resolves once any showNear() call this triggers
-   * settles. Deliberately swallows a showNear() failure rather than
-   * rethrowing (logged to console either way) - the location/map flow that
-   * called this has already succeeded independently of whether nearby
-   * entities loaded - but records the outcome in this.lastEntitySearchFailed
-   * so the caller can still surface it, once it's done with its own
-   * "Searching.../Locating..." status lifecycle.
+   * settles. Never rejects: a showNear() failure shows the load-error toast
+   * (see searchAround) - the location/map flow that called this has already
+   * succeeded independently of whether nearby entities loaded.
    */
   private async setCurrentLocationIfUnset(coordinates: Coordinates): Promise<void> {
     if (this.currentLocation) return;
@@ -371,13 +494,7 @@ export class MainPage {
     this.deps.mapAdapter.fitBounds(boundsFromCoordinates(ring));
     this.deps.mapAdapter.setZoomEnabled(true);
 
-    try {
-      await this.deps.entityProvider.showNear?.(coordinates, ENTITY_SEARCH_RADIUS_MILES);
-      this.lastEntitySearchFailed = false;
-    } catch (error) {
-      console.warn('Could not load nearby entities:', error);
-      this.lastEntitySearchFailed = true;
-    }
+    await this.searchAround(coordinates);
   }
 
   /**
@@ -416,22 +533,21 @@ export class MainPage {
 
   /**
    * What: Moves the search ring to center and shows the entities inside it.
-   * Why: The settled-map counterpart of the search setCurrentLocationIfUnset
-   * runs when location first locks in.
-   * Without it: scheduleSettledSearch would have nothing to run.
+   * Why: The one place every entity search runs through - the lock-time
+   * search, settled-map searches, and the toast's Retry.
+   * Without it: Each of those would repeat the error handling.
    * Inputs: center - the new search center.
-   * Output: A Promise that resolves once the search settles. Failure is
-   * shown on the status line (and cleared by the next successful search),
-   * never thrown.
+   * Output: A Promise that resolves once the search settles. Never rejects:
+   * failure shows the load-error toast; success hides any such toast.
    */
   private async searchAround(center: Coordinates): Promise<void> {
     this.lastSearchCenter = center;
     try {
       await this.deps.entityProvider.showNear?.(center, ENTITY_SEARCH_RADIUS_MILES);
-      if (this.statusEl.textContent === ENTITY_RELOAD_ERROR) this.setStatus('');
+      this.toast.hide();
     } catch (error) {
       console.warn('Could not load nearby entities:', error);
-      this.setStatus(ENTITY_RELOAD_ERROR);
+      this.showLoadError();
     }
   }
 

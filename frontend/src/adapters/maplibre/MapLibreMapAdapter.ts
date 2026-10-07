@@ -15,13 +15,14 @@ const TILE_SIZE_PX = 512;
 
 /**
  * What: The zoom at which the whole world (pole to pole, as far as Web
- * Mercator goes) exactly fills the container's height.
+ * Mercator goes) exactly fills the given height - the container's height
+ * minus the strip covered by the controls panel.
  * Why: The start screen shows the entire world top to bottom; with zoom
  * locked, MapLibre then has no room to pan vertically, so the only possible
  * gesture is dragging the (wrapping) world left/right.
  * Without it: A fixed zoom shows a different slice of the world on every
  * screen size - cropped poles on a phone, or empty space above/below.
- * Inputs: heightPx - the map container's height in CSS pixels.
+ * Inputs: heightPx - the visible map height in CSS pixels.
  * Output: The fractional zoom level.
  */
 function worldFitZoom(heightPx: number): number {
@@ -48,6 +49,8 @@ export class MapLibreMapAdapter implements MapOutlet {
   // re-fitted whenever the container resizes (phone rotation, Safari's
   // toolbar collapsing).
   private showingWorld = true;
+  // Top strip of the container covered by overlay UI (see setTopInset).
+  private topInsetPx = 0;
 
   /**
    * What: Creates the MapLibre map inside the given container and resolves
@@ -65,7 +68,7 @@ export class MapLibreMapAdapter implements MapOutlet {
       container,
       style: STYLE_URL,
       center: [0, 0], // world view: MainPage always starts here regardless of adapter
-      zoom: worldFitZoom(container.clientHeight),
+      zoom: worldFitZoom(container.clientHeight - this.topInsetPx),
       // A landscape phone is under 512px tall, so the world-fit zoom goes
       // below the default minZoom of 0 (-2 is MapLibre's floor).
       minZoom: -2,
@@ -78,13 +81,61 @@ export class MapLibreMapAdapter implements MapOutlet {
     map.touchZoomRotate.disableRotation();
     map.keyboard.disableRotation();
     this.map = map;
+    // Before the first frame, so the world never draws under the controls.
+    this.applyTopInset();
 
-    map.on('resize', () => {
-      if (this.showingWorld) map.jumpTo({ center: [map.getCenter().lng, 0], zoom: worldFitZoom(map.getContainer().clientHeight) });
-    });
+    map.on('resize', () => this.refitWorld());
 
     return new Promise((resolve) => {
       map.on('load', () => resolve());
+    });
+  }
+
+  /**
+   * What: Records how much of the container's top is covered by the
+   * controls and applies it as MapLibre camera padding.
+   * Why: MapLibre measures everything - its world-fit constraint, fitBounds,
+   * flyTo centering - against the container minus its padding, so one
+   * padding value keeps the whole world (and later framing) below the panel.
+   * Without it: See MapOutlet.setTopInset.
+   * Inputs: px - height of the covered strip.
+   * Output: None (void). Before mount() it's only stored.
+   */
+  setTopInset(px: number): void {
+    if (px === this.topInsetPx) return;
+    this.topInsetPx = px;
+    if (this.map) this.applyTopInset();
+  }
+
+  /**
+   * What: Pushes topInsetPx into the map's camera padding and re-fits the
+   * start-screen world view to the remaining height.
+   * Why: Shared by mount() (initial value) and setTopInset() (the panel
+   * changed size, e.g. its buttons wrapped onto another row).
+   * Without it: Both callers would repeat the padding + refit pair.
+   * Inputs: None.
+   * Output: None (void).
+   */
+  private applyTopInset(): void {
+    this.requireMap().setPadding({ top: this.topInsetPx, bottom: 0, left: 0, right: 0 });
+    this.refitWorld();
+  }
+
+  /**
+   * What: Re-fits the world view to the visible height, keeping the current
+   * longitude, while the start screen is showing.
+   * Why: The visible height changes with phone rotation, Safari's toolbar
+   * collapsing, or the controls panel resizing.
+   * Without it: The world would be cropped or leave gaps after those changes.
+   * Inputs: None.
+   * Output: None (void). No-op once the app has moved the camera.
+   */
+  private refitWorld(): void {
+    if (!this.showingWorld) return;
+    const map = this.requireMap();
+    map.jumpTo({
+      center: [map.getCenter().lng, 0],
+      zoom: worldFitZoom(map.getContainer().clientHeight - this.topInsetPx)
     });
   }
 
