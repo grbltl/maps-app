@@ -3,6 +3,8 @@ FROM node:20-slim
 # Install absolute baseline dependencies and clean up caches immediately
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
+    build-essential \
+    python3 \
     curl \
     procps \
     ca-certificates \
@@ -11,7 +13,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /workspace
 
 # Install Claude Code and TypeScript globally
-RUN npm install -g @anthropic-ai/claude-code typescript && npm cache clean --force
+#RUN npm install -g @anthropic-ai/claude-code typescript && npm cache clean --force
+
+# 2. Pin to the safe version, skip pre-built modern binaries, and build from source
+RUN npm install -g @anthropic-ai/claude-code@2.1.112 typescript \
+    --build-from-source \
+    --unsafe-perm \
+    && npm cache clean --force
+
+# 3. CRITICAL: Stop Claude Code from pulling down the latest breaking update on launch
+ENV DISABLE_AUTOUPDATER=1
 
 # Claude Code configuration directory structure
 RUN mkdir -p /root/.claude

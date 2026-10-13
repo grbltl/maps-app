@@ -1,36 +1,185 @@
-Repo summary
-============
+FRONTEND MAP APP — SUMMARY & IMPROVEMENT AREAS
+================================================
 
-Files at the repo root:
-  .gitignore   - ignores all dotfiles, plus node_modules/ and dist/
-  CLAUDE.md    - guidance for Claude Code when working in this repo
-  summary.txt  - this file
-  backend/     - reserved for future backend work; currently empty
-  frontend/    - the map app (Vite + TypeScript) and its dev-container scaffolding
+OVERVIEW
+--------
+A vanilla TypeScript + Vite single-page app that renders an interactive map (MapLibre GL JS
+over OpenFreeMap tiles) and shows nearby restaurants from a static JSON file. No framework;
+only one production dependency (maplibre-gl). Architecture follows a ports-and-adapters
+(hexagonal) pattern: interfaces define the contracts, adapters implement them, and a single
+composition root (main.ts) wires them together. Swapping the map vendor, data source, or
+geocoding service is a one-line change in main.ts.
 
-What it does
-------------
-An interactive map (MapLibre GL JS over OpenFreeMap vector tiles) that shows
-one configurable category of point-of-interest at a time (restaurants by
-default). Users can search a free-text address or use their current location;
-either one, whichever happens first, is locked in as "current location" for
-the rest of the session. Clicking an entity opens a modal with its name,
-straight-line distance and whatever details
-the restaurant data source provides (address, phone, website, hours, cuisine,
-today's deals). Restaurant data will come from a local file (not yet
-created, so the map currently shows none), and later from a database.
+KEY MODULES
+-----------
+- src/main.ts                                   Composition root; wires all adapters
+- src/components/mainPage/MainPage.ts           Orchestrator (search, locate, entity clicks)
+- src/components/modal/Modal.ts                 Generic entity-details dialog
+- src/components/toast/Toast.ts                 Error/notification toast
+- src/adapters/maplibre/MapLibreMapAdapter.ts   MapLibre GL wrapper (camera, zoom, markers)
+- src/adapters/maplibre/MapEntityConnector.ts   Draws entities + radius ring from data outlet
+- src/adapters/file/FileEntityDataConnector.ts  Loads public/restaurants.json once
+- src/adapters/cache/CachingEntityDataConnector.ts  2x radius prefetch, 4-area LRU cache
+- src/adapters/nominatim/NominatimGeocodingConnector.ts  Address -> coords (currently off)
+- src/utils/distance.ts                         Haversine formula and radius filtering
+- src/utils/geoCircle.ts                        Geodesic circle polygon + bounding box
+- src/utils/deals.ts                            Deal-active check shared by marker + modal
+- src/utils/usAddress.ts                        US mailing-address formatter
 
-Architecture
-------------
-Ports-and-adapters: the app is built from two reusable, provider-agnostic
-"plugs" - a Modal component and a MainPage component - talking through
-interfaces (MapAdapter, EntityProvider, EntityDataSource, GeocodingProvider)
-to a swappable
-"socket". Today's socket is MapLibre/OpenFreeMap + Nominatim (address search) +
-a file-backed restaurant data source
-(src/adapters/); a different map vendor means writing a new adapter behind
-the same interfaces, not touching the plugs. Which POI category is shown
-(restaurants, clothing stores, ...) is a single config object
-(src/config/entityConfig.ts), not scattered through the codebase.
+WHAT WORKS WELL
+---------------
+- XSS: entity data always written via textContent, never innerHTML; website URLs validated
+  with URL() and restricted to http/https before being made into links.
+- Privacy: user location held in a plain in-memory variable, never written to localStorage,
+  sessionStorage, or any log.
+- HTTPS enforcement: secure context checked before geolocation; self-signed cert dev mode
+  available for on-device testing.
+- Caching: CachingEntityDataConnector prefetches 2x the requested radius, so most map drags
+  are answered from memory with no network call; in-flight requests are shared; failed ones
+  are not cached.
+- Settle delay: entity searches only fire 500 ms after the camera stops moving, and only for
+  moves >= 0.1 miles, preventing search storms while dragging.
+- Dependency surface: a single production dependency (maplibre-gl) minimises the attack
+  surface and bundle size.
+- Type safety: strict TypeScript throughout; no observable use of `any`.
 
-See CLAUDE.md for commands (dev/build/test) and more architecture detail.
+
+=======================================================================
+PERFORMANCE IMPROVEMENT AREAS
+=======================================================================
+
+P1 — FULL FILE LOADED INTO MEMORY ON FIRST SEARCH
+  File: src/adapters/file/FileEntityDataConnector.ts
+  The entire restaurants.json (~450 KB uncompressed, 15,000+ records) is fetched and held in
+  memory on the first call, then every showNear() call filters the full list via Haversine.
+  Impact is negligible today but will grow linearly with the dataset.
+  Fix: when the planned database backend lands, the CachingEntityDataConnector wrapper
+  (already in place) will cap both network traffic and the in-memory working set.
+  Short-term mitigation: enable Vite's build-time gzip/brotli compression so the initial
+  download is ~80 KB instead of 450 KB (add `build.reportCompressedSize` and configure the
+  server to serve pre-compressed assets).
+
+P2 — GeoJSON FEATURES REBUILT ON EVERY SEARCH
+  File: src/adapters/maplibre/MapEntityConnector.ts
+  drawEntities() allocates a fresh GeoJSON FeatureCollection (including the 64-point radius
+  ring polygon) and calls map.getSource().setData() on every settled-map event, even when the
+  visible entities are unchanged.
+  Fix: diff the incoming entity set against the previous one; skip setData() if the set is
+  identical (compare by ID). For the radius ring, only regenerate the polygon when the center
+  or radius actually changes.
+
+P3 — NO REQUEST TIMEOUT ON EXTERNAL CALLS
+  Files: src/adapters/file/FileEntityDataConnector.ts,
+         src/adapters/nominatim/NominatimGeocodingConnector.ts
+  Fetch calls have no AbortController timeout. A stalled Nominatim or CDN response hangs the
+  spinner indefinitely.
+  Fix: wrap every external fetch with an AbortController and a reasonable timeout
+  (e.g. 10 s for the data file, 5 s for geocoding); surface a user-readable error on abort.
+
+P4 — NO DEBOUNCE ON ADDRESS INPUT
+  File: src/components/mainPage/MainPage.ts
+  The search form submits on button click, so no keystroke-level requests fire today. However,
+  if a typeahead/autocomplete feature is ever added with Nominatim, the 1 req/s usage policy
+  will be violated without a debounce (>= 1,000 ms recommended for Nominatim).
+  Fix: add a debounce utility before wiring any input event to the geocoding provider.
+
+P5 — MISSING HTTP CACHE HEADERS FOR THE STATIC DATA FILE
+  File: public/restaurants.json (served as a static asset)
+  Browsers apply only heuristic caching to static files unless explicit Cache-Control headers
+  are set. A user refreshing the page re-downloads the ~450 KB file.
+  Fix: configure the production server (nginx / Cloudflare / Vercel) to serve
+  restaurants.json with a long max-age and an ETag or versioned filename so the browser
+  skips the download on repeat visits.
+
+P6 — MAPLIBRE BUNDLE NOT SPLIT
+  File: vite.config.ts
+  With default Vite config, maplibre-gl is bundled into a single chunk. maplibre-gl is
+  ~1.3 MB minified (includes WebGL shaders, protobuf parsers, etc.) and changes rarely.
+  Fix: add maplibre-gl to Vite's `build.rollupOptions.output.manualChunks` to emit it as a
+  separate chunk with an aggressive long-term cache header, so app-code updates don't bust
+  the user's cached map library.
+
+P7 — SETTLE DELAY CANCELS BUT DOES NOT ABORT IN-FLIGHT DATA FETCHES
+  File: src/adapters/maplibre/MapEntityConnector.ts
+  When the map moves again within 500 ms, the previous timer is cleared and a new one is
+  scheduled. But if the previous showNear() had already fired and a data fetch was in
+  progress, that fetch is not aborted; both responses arrive, and the later one (not
+  necessarily the last requested) sets the visible entities.
+  MapEntityConnector already implements a latest-call-wins guard (superseded calls don't
+  draw), so stale data is not displayed. The wasted bandwidth from orphaned fetches is the
+  remaining concern — acceptable now but worth fixing before a live backend is wired in.
+  Fix: pass an AbortSignal into EntityDataOutlet.findNear() and cancel it when a newer call
+  supersedes the old one.
+
+
+=======================================================================
+SECURITY IMPROVEMENT AREAS
+=======================================================================
+
+S1 — NO CONTENT SECURITY POLICY HEADER
+  File: index.html / server configuration
+  There is no Content-Security-Policy header or meta tag. Although the code itself avoids
+  eval and dynamic script injection, the absence of a CSP means a future contributor adding a
+  third-party script tag or an innerHTML call would get no defence-in-depth.
+  Fix: add a strict CSP. A starting point that covers the current stack:
+    Content-Security-Policy:
+      default-src 'none';
+      script-src 'self';
+      style-src 'self';
+      img-src 'self' data: blob: https://tiles.openfreemap.org;
+      connect-src 'self' https://tiles.openfreemap.org https://nominatim.openstreetmap.org;
+      font-src 'self';
+      worker-src blob:;
+  MapLibre uses a Web Worker loaded via blob: URL, which requires worker-src blob:.
+
+S2 — NOMINATIM USER-AGENT / REFERER NOT SET
+  File: src/adapters/nominatim/NominatimGeocodingConnector.ts
+  Nominatim's usage policy requires identifying the application via a valid HTTP Referer or a
+  custom User-Agent header. Browsers do not set a meaningful User-Agent on fetch calls, and
+  browsers block setting User-Agent from JavaScript (it is a forbidden header name). Violating
+  the policy can result in the IP being rate-limited or blocked.
+  Fix: proxy Nominatim requests through the planned backend so the User-Agent is set
+  server-side and the client never directly calls Nominatim. A one-line comment in main.ts
+  already marks the geocoding provider as optional and disabled.
+
+S3 — DATA FILE URL EXPOSED IN ERROR MESSAGES
+  File: src/adapters/file/FileEntityDataConnector.ts
+  The error thrown on a failed fetch includes the full URL of restaurants.json. When this
+  connector is replaced with a backend connector, the URL could leak an internal endpoint
+  path to the browser console or error-reporting tools.
+  Fix: log the URL at debug level only; surface a generic "Entity data unavailable" message
+  to the user and to error-reporting.
+
+S4 — DEAL DATES NOT VALIDATED AGAINST THE DATA SCHEMA
+  File: src/utils/deals.ts, src/core/types.ts
+  Deal.startDate and endDate are optional strings (no runtime format check). A malformed
+  value like "not-a-date" passes the lexicographic string comparison silently — a deal with
+  no startDate and endDate "not-a-date" would be considered active forever.
+  Fix: add a lightweight YYYY-MM-DD regex validation in activeDeals(); reject and log any
+  record with an invalid date format rather than silently mis-displaying it.
+
+S5 — MAP STYLE FETCHED FROM MUTABLE THIRD-PARTY URL
+  File: src/adapters/maplibre/MapLibreMapAdapter.ts
+  The MapLibre style is fetched at runtime from https://tiles.openfreemap.org/styles/bright —
+  a mutable alias on a third-party host. If that CDN were compromised, a tampered style
+  document could inject malicious tile URLs that the browser would silently request.
+  Fix: pin the style to a versioned, immutable URL rather than the mutable "bright" alias,
+  and document the expected version so infrastructure changes are detectable. Subresource
+  Integrity cannot be applied to fetch()-loaded JSON, so versioning is the main mitigation.
+
+S6 — NO RATE LIMITING ON THE RETRY BUTTON
+  File: src/components/mainPage/MainPage.ts
+  The Retry button in the toast re-runs the entity search immediately with no back-off or
+  maximum retry count. A flaky network could lead a user to spam retries. Once a live backend
+  is wired in, repeated retries from many users could cause unintended load spikes.
+  Fix: implement exponential back-off (e.g. 1 s, 2 s, 4 s, cap at 30 s) and a maximum of
+  5 automatic retries before showing a "Please try again later" message.
+
+S7 — BROWSER GEOLOCATION ERROR MESSAGE TREATED AS TRUSTED
+  File: src/components/mainPage/MainPage.ts
+  GeolocationPositionError.message comes from the browser platform and is passed directly to
+  showFieldError() / the toast. Both display paths use textContent today (safe). However,
+  the code contains no comment noting this assumption, so a future refactor to innerHTML
+  would silently introduce an XSS vector.
+  Fix: no code change required now; add a comment on the error-handling path that the message
+  is platform-controlled and must never be rendered via innerHTML.
