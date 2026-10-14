@@ -1,33 +1,36 @@
 #!/usr/bin/env node
-// Turns the restaurant inspection CSV into public/restaurants.json, the data
-// file FileEntityDataConnector serves to the map.
+// Turns an inspection CSV into public/restaurants.json, the data file
+// FileEntityDataConnector serves to the map.
 //
 // Usage (from frontend/):
-//   node scripts/build-restaurant-data.mjs <inspections.csv> [output.json]
+//   node scripts/build-restaurant-data.mjs <inspections.csv> [output.json] [options]
 //
-// - Keeps only rows whose "Establishment Type" is ESTABLISHMENT_TYPE (the
-//   app shows a single category - see src/config/entityConfig.ts).
-// - The CSV has one row per inspection, so an establishment can appear more
-//   than once; rows are de-duplicated by "State ID#", keeping the most recent
-//   inspection's name/address.
-// - Text is cleaned (extra spaces collapsed, periods dropped) and city
-//   typos are fixed (see fixCityTypos) before geocoding and output.
-// - Addresses are geocoded once, here, with the US Census Bureau batch
-//   geocoder (free, US-only, up to 10,000 addresses per request) - never in
-//   the browser, which would be slow and break public geocoders' usage
-//   policies. Census misses are retried with Nominatim, accepting only
-//   results whose house number and zip match (see geocodeWithNominatim).
-// - Coordinates for restaurants neither geocoder can place are entered by
-//   hand in OVERRIDES_FILE (next to the input CSV); filled-in rows are used
-//   instead of geocoding. The first run creates that file pre-filled with
-//   blank rows for the unplaced restaurants; after that it's hand-maintained
-//   and never rewritten - delete a row to drop a restaurant from it for good.
-//   Unplaced restaurants are left off the map and listed on the console.
+// Column name options (defaults in DEFAULT_COLUMN_NAMES below):
+//   --col-date=<name>
+//   --col-name=<name>
+//   --col-street=<name>
+//   --col-unit=<name>
+//   --col-city=<name>
+//   --col-state=<name>
+//   --col-zip=<name>
+//   --col-state-id=<name>
+//   --col-establishment-type=<name>
+//   --establishment-type=<value>   (the row filter value; default: "1 - Restaurant")
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import {
+  parseCsv,
+  csvField,
+  geocodableStreet,
+  validateNominatimResult,
+  resolveColumnIndexes,
+  deduplicateRows,
+  buildRecords,
+  fixCityTypos,
+  parseOverrideCoordinates
+} from './lib/csv-processor.mjs';
 
-const ESTABLISHMENT_TYPE = '1 - Restaurant';
 const CENSUS_BATCH_URL = 'https://geocoding.geo.census.gov/geocoder/locations/addressbatch';
 const CENSUS_BATCH_LIMIT = 10000;
 // Nominatim's usage policy: at most 1 request/second, identifying User-Agent.
@@ -36,142 +39,48 @@ const NOMINATIM_USER_AGENT = 'map-app restaurant data build (one-off geocoding o
 const NOMINATIM_DELAY_MS = 1100;
 const NOMINATIM_ATTEMPTS = 3;
 // Hand-entered coordinates for restaurants neither geocoder can place; lives
-// next to the input CSV. See readOverrides.
+// next to the input CSV.
 const OVERRIDES_FILE = 'restaurant-coordinate-overrides.csv';
 const OVERRIDES_HEADER = ['state_id', 'name', 'street', 'unit', 'city', 'state', 'zip', 'coordinates'];
 
-// A city name is trusted once at least this many establishments use it;
-// rarer spellings within MAX_CITY_TYPO_DISTANCE edits of a trusted one are
-// treated as typos of it (e.g. "CHAROTTE" -> "CHARLOTTE").
-const TRUSTED_CITY_MIN_COUNT = 5;
-const MAX_CITY_TYPO_DISTANCE = 2;
-
-// Column indexes (0-based) in the inspection CSV.
-const COL = {
-  inspectionDate: 0,
-  name: 4,
-  street: 5,
-  unit: 6,
-  city: 7,
-  state: 8,
-  zip: 9,
-  stateId: 10,
-  establishmentType: 11
+// Default column header names expected in the inspection CSV. Override any of
+// these with --col-<field>=<name> to match a different CSV schema.
+const DEFAULT_COLUMN_NAMES = {
+  inspectionDate: 'Date',
+  name: 'Premise Name',
+  street: 'Address Street',
+  unit: 'Address Suite/Unit',
+  city: 'City',
+  state: 'State',
+  zip: 'Zip',
+  stateId: 'State ID#',
+  establishmentType: 'Establishment Type'
 };
 
-/** Parses RFC 4180 CSV (quoted fields may contain commas, quotes, newlines). */
-function parseCsv(text) {
-  const rows = [];
-  let row = [];
-  let field = '';
-  let inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"' && text[i + 1] === '"') {
-        field += '"';
-        i++;
-      } else if (c === '"') {
-        inQuotes = false;
-      } else {
-        field += c;
-      }
-    } else if (c === '"') {
-      inQuotes = true;
-    } else if (c === ',') {
-      row.push(field);
-      field = '';
-    } else if (c === '\n' || c === '\r') {
-      if (c === '\r' && text[i + 1] === '\n') i++;
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = '';
-    } else {
-      field += c;
-    }
-  }
-  if (field !== '' || row.length) {
-    row.push(field);
-    rows.push(row);
-  }
-  return rows.filter((r) => r.some((f) => f.trim() !== ''));
-}
+function parseArgs(argv) {
+  const positional = [];
+  const columnNames = { ...DEFAULT_COLUMN_NAMES };
+  let establishmentType = '1 - Restaurant';
 
-const csvField = (value) => `"${String(value).replace(/"/g, '""')}"`;
+  for (const arg of argv) {
+    const eqIdx = arg.indexOf('=');
+    const flag = eqIdx === -1 ? arg : arg.slice(0, eqIdx);
+    const val = eqIdx === -1 ? '' : arg.slice(eqIdx + 1);
 
-/** Collapses runs of whitespace and drops periods/backticks ("E.   INDEPENDENCE BLVD" -> "E INDEPENDENCE BLVD"). */
-const clean = (value) => (value ?? '').replace(/[.`]/g, ' ').replace(/\s+/g, ' ').trim();
-
-// Street-suffix abbreviations used by the county's data that aren't the
-// USPS standard ones, so neither geocoder recognizes them ("CONNECTION
-// POINT BV" finds nothing; "CONNECTION POINT BLVD" does).
-const NONSTANDARD_SUFFIXES = {
-  AV: 'AVE', BV: 'BLVD', CR: 'CIR', HY: 'HWY', LP: 'LOOP', PKY: 'PKWY', PY: 'PKWY', RN: 'RUN', WY: 'WAY'
-};
-
-/**
- * The street as sent to geocoders: the last word rewritten to its USPS
- * suffix if it's one of NONSTANDARD_SUFFIXES. Only used for geocoding - the
- * output keeps the street as the source spells it.
- */
-function geocodableStreet(street) {
-  const words = street.split(' ');
-  const last = words.length > 1 ? NONSTANDARD_SUFFIXES[words[words.length - 1].toUpperCase()] : undefined;
-  if (last) words[words.length - 1] = last;
-  return words.join(' ');
-}
-
-/** Levenshtein edit distance. */
-function editDistance(a, b) {
-  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
-  for (let i = 1; i <= a.length; i++) {
-    const cur = [i];
-    for (let j = 1; j <= b.length; j++) {
-      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    }
-    prev = cur;
-  }
-  return prev[b.length];
-}
-
-/**
- * Fixes city typos in place: strips a trailing state ("CHARLOTTE NC"), then
- * snaps rare spellings to the closest trusted city. Logs every correction so
- * a wrong snap is visible.
- */
-function fixCityTypos(records) {
-  for (const r of records) {
-    const withoutState = r.state && r.city.toUpperCase().endsWith(` ${r.state.toUpperCase()}`)
-      ? r.city.slice(0, -r.state.length).replace(/[\s,]+$/, '')
-      : r.city;
-    if (withoutState !== r.city) console.log(`  city fix: "${r.city}" -> "${withoutState}"`);
-    r.city = withoutState;
+    if (flag === '--col-date') columnNames.inspectionDate = val;
+    else if (flag === '--col-name') columnNames.name = val;
+    else if (flag === '--col-street') columnNames.street = val;
+    else if (flag === '--col-unit') columnNames.unit = val;
+    else if (flag === '--col-city') columnNames.city = val;
+    else if (flag === '--col-state') columnNames.state = val;
+    else if (flag === '--col-zip') columnNames.zip = val;
+    else if (flag === '--col-state-id') columnNames.stateId = val;
+    else if (flag === '--col-establishment-type') columnNames.establishmentType = val;
+    else if (flag === '--establishment-type') establishmentType = val;
+    else if (!arg.startsWith('--')) positional.push(arg);
   }
 
-  const counts = new Map();
-  for (const r of records) counts.set(r.city, (counts.get(r.city) ?? 0) + 1);
-  const trusted = [...counts].filter(([, n]) => n >= TRUSTED_CITY_MIN_COUNT).map(([city]) => city);
-
-  const corrections = new Map();
-  for (const [city, count] of counts) {
-    if (count >= TRUSTED_CITY_MIN_COUNT) continue;
-    let best = null;
-    for (const candidate of trusted) {
-      const d = editDistance(city, candidate);
-      const better = !best || d < best.d || (d === best.d && counts.get(candidate) > counts.get(best.city));
-      if (d <= MAX_CITY_TYPO_DISTANCE && better) best = { city: candidate, d };
-    }
-    if (best) corrections.set(city, best.city);
-  }
-  for (const r of records) r.city = corrections.get(r.city) ?? r.city;
-  for (const [from, to] of corrections) console.log(`  city fix: "${from}" -> "${to}" (${counts.get(from)})`);
-}
-
-/** "9/1/2026" -> sortable number (20260901); unparseable -> 0. */
-function dateKey(mdy) {
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(mdy.trim());
-  return m ? Number(m[3]) * 10000 + Number(m[1]) * 100 + Number(m[2]) : 0;
+  return { positional, columnNames, establishmentType };
 }
 
 /** Geocodes up to CENSUS_BATCH_LIMIT records; returns Map(id -> {lat, lng}). */
@@ -198,11 +107,8 @@ async function geocodeBatch(records) {
 }
 
 /**
- * Fallback for addresses the Census geocoder misses (its street ranges lag
- * behind newer developments). Nominatim's top result is accepted only if its
- * house number and zip both match ours - without that check it happily
- * returns a similarly named street elsewhere (e.g. "3070 DERITA RD" came back
- * as "Derita Creek Road", different zip, no house number).
+ * Fallback for addresses the Census geocoder misses. Nominatim's top result is
+ * accepted only if its house number and zip both match — see validateNominatimResult.
  * Returns {lat, lng} or null.
  */
 async function geocodeWithNominatim(record) {
@@ -217,56 +123,51 @@ async function geocodeWithNominatim(record) {
     street: geocodableStreet(record.street),
     postalcode: record.zip
   });
-  const response = await fetch(`${NOMINATIM_URL}?${params}`, { headers: { 'User-Agent': NOMINATIM_USER_AGENT } });
+  const response = await fetch(`${NOMINATIM_URL}?${params}`, {
+    headers: { 'User-Agent': NOMINATIM_USER_AGENT }
+  });
   if (!response.ok) throw new Error(`Nominatim failed: HTTP ${response.status}`);
 
   const [result] = await response.json();
-  const numbers = (result?.address?.house_number ?? '').split(/[;,]/).map((n) => n.trim().toUpperCase());
-  const zip = (result?.address?.postcode ?? '').slice(0, 5);
-  if (!numbers.includes(houseNumber.toUpperCase()) || zip !== record.zip.slice(0, 5)) return null;
+  if (!validateNominatimResult(result, houseNumber, record.zip)) return null;
   return { lat: Number(result.lat), lng: Number(result.lon) };
 }
 
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 
+async function readOverrides(path) {
+  let text;
+  try {
+    text = await readFile(path, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return { exists: false, coordinates: new Map() };
+    throw error;
+  }
+  const coordinates = parseOverrideCoordinates(text, { warn: console.warn });
+  return { exists: true, coordinates };
+}
+
 async function main() {
-  const [inputPath, outputPath = 'public/restaurants.json'] = process.argv.slice(2);
+  const { positional, columnNames, establishmentType } = parseArgs(process.argv.slice(2));
+  const [inputPath, outputPath = 'public/restaurants.json'] = positional;
+
   if (!inputPath) {
-    console.error('Usage: node scripts/build-restaurant-data.mjs <inspections.csv> [output.json]');
+    console.error(
+      'Usage: node scripts/build-restaurant-data.mjs <inspections.csv> [output.json] [--col-<field>=<name> ...]'
+    );
     process.exit(1);
   }
 
-  const [, ...rows] = parseCsv(await readFile(inputPath, 'utf8')); // skip header
+  const [headerRow, ...dataRows] = parseCsv(await readFile(inputPath, 'utf8'));
+  const colIndexes = resolveColumnIndexes(headerRow, columnNames);
 
-  // De-duplicate by State ID#, keeping the latest inspection.
-  const latest = new Map();
-  let skippedType = 0;
-  for (const cols of rows) {
-    if ((cols[COL.establishmentType] ?? '').trim() !== ESTABLISHMENT_TYPE) {
-      skippedType++;
-      continue;
-    }
-    const key = cols[COL.stateId]?.trim() || cols.slice(COL.name, COL.zip + 1).join('|');
-    const existing = latest.get(key);
-    if (!existing || dateKey(cols[COL.inspectionDate]) >= dateKey(existing[COL.inspectionDate])) {
-      latest.set(key, cols);
-    }
-  }
-
-  const records = [...latest].map(([id, cols]) => ({
-    id,
-    name: clean(cols[COL.name]),
-    street: clean(cols[COL.street]),
-    unit: clean(cols[COL.unit]),
-    city: clean(cols[COL.city]),
-    state: clean(cols[COL.state]),
-    zip: clean(cols[COL.zip])
-  }));
+  const { deduped, skippedCount } = deduplicateRows(dataRows, colIndexes, establishmentType);
+  const records = buildRecords(deduped, colIndexes);
   console.log(
-    `${rows.length} rows -> ${records.length} unique establishments ` +
-      `(${skippedType} rows skipped as not "${ESTABLISHMENT_TYPE}")`
+    `${dataRows.length} rows -> ${records.length} unique establishments ` +
+      `(${skippedCount} rows skipped as not "${establishmentType}")`
   );
-  fixCityTypos(records);
+  fixCityTypos(records, { log: console.log });
 
   const overridesPath = join(dirname(inputPath), OVERRIDES_FILE);
   const overrides = await readOverrides(overridesPath);
@@ -286,7 +187,9 @@ async function main() {
 
   const misses = records.filter((r) => !located.has(r.id));
   if (misses.length) {
-    console.log(`Retrying ${misses.length} misses with Nominatim (~${Math.ceil((misses.length * NOMINATIM_DELAY_MS) / 60000)} min)...`);
+    console.log(
+      `Retrying ${misses.length} misses with Nominatim (~${Math.ceil((misses.length * NOMINATIM_DELAY_MS) / 60000)} min)...`
+    );
     let recovered = 0;
     for (const r of misses) {
       // Nominatim's top result for the same query varies between calls (seen:
@@ -333,35 +236,6 @@ async function main() {
       console.warn(`To place one, add its row with coordinates to ${overridesPath} and rerun.`);
     }
   }
-}
-
-/**
- * Reads the hand-maintained coordinate overrides (missing file = none).
- * The "coordinates" column takes "lat, lng" exactly as Google Maps copies it
- * (right-click a spot -> click the coordinates). Rows are keyed by State ID#,
- * so they survive re-exports of the inspection CSV.
- * Returns { exists, coordinates: Map(id -> {lat, lng}) }.
- */
-async function readOverrides(path) {
-  let text;
-  try {
-    text = await readFile(path, 'utf8');
-  } catch (error) {
-    if (error.code === 'ENOENT') return { exists: false, coordinates: new Map() };
-    throw error;
-  }
-  const [, ...rows] = parseCsv(text);
-  const coordinates = new Map();
-  for (const row of rows) {
-    const [id, name] = row;
-    const value = (row[OVERRIDES_HEADER.length - 1] ?? '').trim();
-    if (!value) continue;
-    const [lat, lng, extra] = value.split(',').map((n) => Number(n.trim()));
-    const valid = extra === undefined && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
-    if (valid) coordinates.set(id, { lat, lng });
-    else console.warn(`  Ignoring override for "${name}": "${value}" is not "lat, lng"`);
-  }
-  return { exists: true, coordinates };
 }
 
 main().catch((error) => {

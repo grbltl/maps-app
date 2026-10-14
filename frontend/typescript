@@ -1,0 +1,752 @@
+Script started on 2026-10-13 20:58:18-04:00 [TERM="xterm-256color" TTY="/dev/pts/4" COLUMNS="204" LINES="46"]
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-a/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-a/frontend[00m$ ls
+[?2004ldocker-entrypoint.sh  Dockerfile  index.html  package.json  package-lock.json  [0m[01;34mpublic[0m  [01;34mscripts[0m  settings.json  [01;34msrc[0m  [01;32mstatusline.sh[0m  tsconfig.json  typescript  vite.config.ts
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-a/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-a/frontend[00m$ cd scripts/
+[?2004l[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-a/frontend/scripts[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-a/frontend/scripts[00m$ ls
+[?2004lbuild-restaurant-data.mjs
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-a/frontend/scripts[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-a/frontend/scripts[00m$ cd
+[?2004l[?2004h]0;gaurab@debian-high-sierra: ~[01;32mgaurab@debian-high-sierra[00m:[01;34m~[00m$ cd Developer/maps-app/
+[?2004l[?2004h]0;gaurab@debian-high-sierra: ~/Developer/maps-app[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/maps-app[00m$ ls
+[?2004lCLAUDE.md  [0m[01;34mfrontend[0m  restaurant-coordinate-overrides.csv  setup.md  summary.txt
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/maps-app[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/maps-app[00m$ ls restaurant-coordinate-overrides.csv [K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[K[Kcd ..
+[?2004l[?2004h]0;gaurab@debian-high-sierra: ~/Developer[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer[00m$ ls
+[?2004l[0m[01;34mLaunchCodeAgenticEngineer[0m  [01;34mmaps-app[0m  [01;34mrepo-agent-a[0m  [01;34mrepo-agent-b[0m  session_tasks-maps.md
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer[00m$ ls repo-agent-a
+[?2004lCLAUDE.md  [0m[01;34mfrontend[0m  restaurant-coordinate-overrides.csv  setup.md  summary.txt
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer[00m$ ls repo-agent-b
+[?2004lCLAUDE.md  [0m[01;34mfrontend[0m  restaurant-coordinate-overrides.csv  setup.md  summary.txt
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer[00m$ ls repo-agent-b/frontend/
+docker-entrypoint.sh  index.html            package.json          public/               settings.json         statusline.sh         vite.config.ts        
+Dockerfile            node_modules/         package-lock.json     scripts/              src/                  tsconfig.json         
+]0;gaurab@debian-high-sierra: ~/Developer[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer[00m$ ls repo-agent-b/frontend/src/
+[?2004l[0m[01;34madapters[0m  [01;34mcomponents[0m  [01;34mconfig[0m  [01;34mcore[0m  main.ts  [01;34mutils[0m
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer[00m$ ls
+[?2004l[0m[01;34mLaunchCodeAgenticEngineer[0m  [01;34mmaps-app[0m  [01;34mrepo-agent-a[0m  [01;34mrepo-agent-b[0m  session_tasks-maps.md
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer[00m$ git status
+[?2004lfatal: not a git repository (or any of the parent directories): .git
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer[00m$ cd ..
+[?2004l[?2004h]0;gaurab@debian-high-sierra: ~[01;32mgaurab@debian-high-sierra[00m:[01;34m~[00m$ ls
+[?2004l[0m[01;34mDeveloper[0m
+[?2004h]0;gaurab@debian-high-sierra: ~[01;32mgaurab@debian-high-sierra[00m:[01;34m~[00m$ cd ma[K[KDeveloper/maps-app/[K[K[K[K[K[K[K[K[Krepo-agent-b/
+[?2004l[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b[00m$ git status
+[?2004lOn branch feature/agent-b
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	[31mmodified:   frontend/src/components/modal/Modal.css[m
+	[31mmodified:   frontend/src/components/modal/Modal.ts[m
+
+no changes added to commit (use "git add" and/or "git commit -a")
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b[00m$ cd ../repo-agent-a/
+[?2004l[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-a[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-a[00m$ ls
+[?2004lCLAUDE.md  [0m[01;34mfrontend[0m  restaurant-coordinate-overrides.csv  setup.md  summary.txt
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-a[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-a[00m$ git status
+[?2004lOn branch feature/agent-a
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	[31mfrontend/typescript[m
+
+nothing added to commit but untracked files present (use "git add" to track)
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-a[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-a[00m$ cd ../repo-agent-b
+[?2004l[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b[00m$ ls
+[?2004lCLAUDE.md  [0m[01;34mfrontend[0m  restaurant-coordinate-overrides.csv  setup.md  summary.txt
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b[00m$ npm run dev:phone
+[?2004l[37;40mnpm[0m [0m[31;40mERR![0m [0m[35mcode[0m ENOENT
+[0m[37;40mnpm[0m [0m[31;40mERR![0m [0m[35msyscall[0m open
+[0m[37;40mnpm[0m [0m[31;40mERR![0m [0m[35mpath[0m /home/gaurab/Developer/repo-agent-b/package.json
+[0m[37;40mnpm[0m [0m[31;40mERR![0m [0m[35merrno[0m -2
+[0m[37;40mnpm[0m [0m[31;40mERR![0m [0m[35menoent[0m ENOENT: no such file or directory, open '/home/gaurab/Developer/repo-agent-b/package.json'
+[0m[37;40mnpm[0m [0m[31;40mERR![0m [0m[35menoent[0m This is related to npm not being able to find a file.
+[0m[37;40mnpm[0m [0m[31;40mERR![0m [0m[35menoent[0m 
+[0m
+[37;40mnpm[0m [0m[31;40mERR![0m[35m[0m A complete log of this run can be found in:
+[0m[37;40mnpm[0m [0m[31;40mERR![0m[35m[0m     /home/gaurab/.npm/_logs/2026-10-14T01_10_41_884Z-debug-0.log
+[0m[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b[00m$ ls
+[?2004lCLAUDE.md  [0m[01;34mfrontend[0m  restaurant-coordinate-overrides.csv  setup.md  summary.txt
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b[00m$ cd ..
+[?2004l[?2004h]0;gaurab@debian-high-sierra: ~/Developer[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer[00m$ ls
+[?2004l[0m[01;34mLaunchCodeAgenticEngineer[0m  [01;34mmaps-app[0m  [01;34mrepo-agent-a[0m  [01;34mrepo-agent-b[0m  session_tasks-maps.md
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer[00m$ rep[K[K[Kcd repo-agent-b/frontend/
+[?2004l[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b/frontend[00m$ ls
+[?2004ldocker-entrypoint.sh  Dockerfile  index.html  [0m[01;34mnode_modules[0m  package.json  package-lock.json  [01;34mpublic[0m  [01;34mscripts[0m  settings.json  [01;34msrc[0m  [01;32mstatusline.sh[0m  tsconfig.json  vite.config.ts
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b/frontend[00m$ npm run dev:phone
+[?2004l
+> map-app@0.0.0 dev:phone
+> vite --host --mode phone
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m1395[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttps://localhost:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://192.168.0.166:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://172.17.0.1:[1m5173[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-b/frontend/node_modules/.vite/deps_temp_0435ad2b'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50189:34
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2m9:12:18 PM[22m [31m[1m[vite][22m[39m [31merror while updating dependencies:
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-b/frontend/node_modules/.vite/deps_temp_9a108915'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at runOptimizer (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50240:30)
+    at rerun (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50386:5)
+    at Timeout._onTimeout (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50442:9)
+    at listOnTimeout (node:internal/timers:581:17)
+    at process.processTimers (node:internal/timers:519:7)[39m
+^C
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b/frontend[00m$ npm run dev
+[?2004l
+> map-app@0.0.0 dev
+> vite
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m809[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+[2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-b/frontend/node_modules/.vite/deps_temp_f4ff9979'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50189:34
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+^C
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b/frontend[00m$ npm run dev:phonels[Knpm run dev:phone
+[?2004l
+> map-app@0.0.0 dev:phone
+> vite --host --mode phone
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m1305[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttps://localhost:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://192.168.0.166:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://172.17.0.1:[1m5173[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-b/frontend/node_modules/.vite/deps_temp_fa28fc5c'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50189:34
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2m9:20:19 PM[22m [31m[1m[vite][22m[39m [31merror while updating dependencies:
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-b/frontend/node_modules/.vite/deps_temp_fa6f6bdb'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at runOptimizer (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50240:30)
+    at rerun (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50386:5)
+    at Timeout._onTimeout (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50442:9)
+    at listOnTimeout (node:internal/timers:581:17)
+    at process.processTimers (node:internal/timers:519:7)[39m
+^C
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b/frontend[00m$ cd ../../repo-agent-a/frontend/
+[?2004l[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-a/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-a/frontend[00m$ ls
+[?2004ldocker-entrypoint.sh  Dockerfile  index.html  [0m[01;34mnode_modules[0m  package.json  package-lock.json  [01;34mpublic[0m  [01;34mscripts[0m  settings.json  [01;34msrc[0m  [01;32mstatusline.sh[0m  tsconfig.json  typescript  vite.config.ts
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-a/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-a/frontend[00m$ npm run dev:phone
+[?2004l
+> map-app@0.0.0 dev:phone
+> vite --host --mode phone
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m1499[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttps://localhost:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://192.168.0.166:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://172.17.0.1:[1m5173[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-a/frontend/node_modules/.vite/deps_temp_026df426'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-a/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at file:///home/gaurab/Developer/repo-agent-a/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50189:34
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2m9:25:56 PM[22m [31m[1m[vite][22m[39m [31merror while updating dependencies:
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-a/frontend/node_modules/.vite/deps_temp_cfe3800b'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-a/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at runOptimizer (file:///home/gaurab/Developer/repo-agent-a/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50240:30)
+    at rerun (file:///home/gaurab/Developer/repo-agent-a/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50386:5)
+    at Timeout._onTimeout (file:///home/gaurab/Developer/repo-agent-a/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50442:9)
+    at listOnTimeout (node:internal/timers:581:17)
+    at process.processTimers (node:internal/timers:519:7)[39m
+^C
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-a/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-a/frontend[00m$ cd ../../repo-agent-b/frontend/
+[?2004l[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b/frontend[00m$ npm cd ../../repo-agent-b/frontend/[14Pnpm run dev:phone
+[?2004l
+> map-app@0.0.0 dev:phone
+> vite --host --mode phone
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m1640[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttps://localhost:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://192.168.0.166:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://172.17.0.1:[1m5173[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-b/frontend/node_modules/.vite/deps_temp_2dba9dc5'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50189:34
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2m9:31:19 PM[22m [31m[1m[vite][22m[39m [31merror while updating dependencies:
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-b/frontend/node_modules/.vite/deps_temp_b3a7d43c'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at runOptimizer (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50240:30)
+    at rerun (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50386:5)
+    at Timeout._onTimeout (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50442:9)
+    at listOnTimeout (node:internal/timers:581:17)
+    at process.processTimers (node:internal/timers:519:7)[39m
+^C
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b/frontend[00m$ npm run dev:phone
+[?2004l
+> map-app@0.0.0 dev:phone
+> vite --host --mode phone
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m1323[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttps://localhost:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://192.168.0.166:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://172.17.0.1:[1m5173[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-b/frontend/node_modules/.vite/deps_temp_f0ccbef3'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50189:34
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2m9:43:27 PM[22m [31m[1m[vite][22m[39m [31merror while updating dependencies:
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-b/frontend/node_modules/.vite/deps_temp_9f5ebf49'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at runOptimizer (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50240:30)
+    at rerun (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50386:5)
+    at Timeout._onTimeout (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50442:9)
+    at listOnTimeout (node:internal/timers:581:17)
+    at process.processTimers (node:internal/timers:519:7)[39m
+^C
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b/frontend[00m$ cd ../../repo-agent-a/frontend/
+[?2004l[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-a/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-a/frontend[00m$ cd ../../repo-agent-a/frontend/[14Pnpm run dev:phone
+[?2004l
+> map-app@0.0.0 dev:phone
+> vite --host --mode phone
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m1720[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttps://localhost:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://192.168.0.166:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://172.17.0.1:[1m5173[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-a/frontend/node_modules/.vite/deps_temp_9f0bd48d'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-a/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at file:///home/gaurab/Developer/repo-agent-a/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50189:34
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2m9:44:18 PM[22m [31m[1m[vite][22m[39m [31merror while updating dependencies:
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-a/frontend/node_modules/.vite/deps_temp_c78ce056'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-a/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at runOptimizer (file:///home/gaurab/Developer/repo-agent-a/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50240:30)
+    at rerun (file:///home/gaurab/Developer/repo-agent-a/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50386:5)
+    at Timeout._onTimeout (file:///home/gaurab/Developer/repo-agent-a/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50442:9)
+    at listOnTimeout (node:internal/timers:581:17)
+    at process.processTimers (node:internal/timers:519:7)[39m
+^C
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-a/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-a/frontend[00m$ npm run dev:phonecd ../../repo-agent-a/frontend/[14Pnpm run dev:phonecd ../../repo-agent-a/frontend/[1P/frontend/b/frontend/
+[?2004l[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b/frontend[00m$ cd ../../repo-agent-b/frontend/[14Pnpm run dev:phone
+[?2004l
+> map-app@0.0.0 dev:phone
+> vite --host --mode phone
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m1544[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttps://localhost:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://192.168.0.166:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://172.17.0.1:[1m5173[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-b/frontend/node_modules/.vite/deps_temp_ec519ae3'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50189:34
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2m9:50:28 PM[22m [31m[1m[vite][22m[39m [31merror while updating dependencies:
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-b/frontend/node_modules/.vite/deps_temp_6fb4e5e3'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at runOptimizer (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50240:30)
+    at rerun (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50386:5)
+    at Timeout._onTimeout (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50442:9)
+    at listOnTimeout (node:internal/timers:581:17)
+    at process.processTimers (node:internal/timers:519:7)[39m
+^C
+[?2004h]0;gaurab@debian-high-sierra: ~/Developer/repo-agent-b/frontend[01;32mgaurab@debian-high-sierra[00m:[01;34m~/Developer/repo-agent-b/frontend[00m$ npm run dev:phone
+[?2004l
+> map-app@0.0.0 dev:phone
+> vite --host --mode phone
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[1;1H[0J
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m1599[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttps://localhost:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://192.168.0.166:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttps://172.17.0.1:[1m5173[22m/[39m
+[2m[32m  ➜[39m[22m[2m  press [22m[1mh + enter[22m[2m to show help[22m
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-b/frontend/node_modules/.vite/deps_temp_82b46ebd'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50189:34
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+[2m10:22:49 PM[22m [31m[1m[vite][22m[39m [31merror while updating dependencies:
+Error: EACCES: permission denied, mkdir '/home/gaurab/Developer/repo-agent-b/frontend/node_modules/.vite/deps_temp_19c0d27f'
+    at Object.mkdirSync (node:fs:1386:26)
+    at runOptimizeDeps (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50716:15)
+    at runOptimizer (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50240:30)
+    at rerun (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50386:5)
+    at Timeout._onTimeout (file:///home/gaurab/Developer/repo-agent-b/frontend/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:50442:9)
+    at listOnTimeout (node:internal/timers:581:17)
+    at process.processTimers (node:internal/timers:519:7)[39m
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
