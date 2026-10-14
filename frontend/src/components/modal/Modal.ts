@@ -12,11 +12,17 @@ export interface ModalLink {
   href: string;
 }
 
+/** A line rendered as "4.5 ★★★★½ (1,112)" with proportionally filled stars. */
+export interface ModalRating {
+  value: number;
+  count: number;
+}
+
 /** A single display line. A string[] renders as one block with tight
  * (<br>-separated) spacing between its sub-lines - used for a multi-line
  * entity like an address, which is conceptually one piece of information.
- * A ModalLink renders as a link. */
-export type ModalLine = string | string[] | ModalLink;
+ * A ModalLink renders as a link. A ModalRating renders proportional stars. */
+export type ModalLine = string | string[] | ModalLink | ModalRating;
 
 /**
  * What: Returns href only if it's an http(s) URL.
@@ -132,21 +138,33 @@ export class Modal {
     lines.forEach((line) => {
       const p = document.createElement('p');
       if (typeof line === 'object' && !Array.isArray(line)) {
-        const href = safeHttpUrl(line.href);
-        if (href) {
-          const a = document.createElement('a');
-          a.href = href;
-          a.target = '_blank';
-          a.rel = 'noopener noreferrer';
-          a.textContent = line.text;
-          p.append(a);
+        if ('href' in line) {
+          const href = safeHttpUrl(line.href);
+          if (href) {
+            const a = document.createElement('a');
+            a.href = href;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            a.textContent = line.text;
+            p.append(a);
+          } else {
+            p.textContent = line.text;
+          }
         } else {
-          p.textContent = line.text;
+          p.appendChild(document.createTextNode(`${line.value} `));
+          const stars = document.createElement('span');
+          stars.className = 'modal-stars';
+          stars.setAttribute('aria-label', `${line.value} out of 5 stars`);
+          stars.style.setProperty('--fill', `${(line.value / 5) * 100}%`);
+          stars.textContent = '★★★★★';
+          p.appendChild(stars);
+          p.appendChild(document.createTextNode(` (${line.count.toLocaleString()})`));
         }
         this.detailsEl.append(p);
         return;
       }
       const sublines = Array.isArray(line) ? line : [line];
+      if (Array.isArray(line)) p.className = 'block';
       sublines.forEach((text, i) => {
         if (i > 0) p.appendChild(document.createElement('br'));
         p.appendChild(document.createTextNode(text));
