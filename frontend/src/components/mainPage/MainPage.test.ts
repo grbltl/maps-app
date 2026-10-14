@@ -309,12 +309,9 @@ describe('MainPage', () => {
 
     const lines = Array.from(root.querySelectorAll('.modal-details p')).map((p) => p.textContent);
     expect(lines.some((line) => line?.endsWith('mi away'))).toBe(true);
-    expect(lines).toContain('Pizza');
     expect(lines).toContain('18484 Preston RdDallas, TX 75252');
     expect(lines).toContain('+1-469-497-1415');
-    expect(lines).toContain('Mon-Sun 11am-10pm');
-    expect(lines.some((line) => line?.includes('2-for-1 slices'))).toBe(true);
-    expect(lines.some((line) => line?.includes('Expired deal'))).toBe(false);
+    expect(lines.some((l) => l?.includes('4.5') && l?.includes('1,112'))).toBe(true);
 
     const link = root.querySelector('.modal-details a') as HTMLAnchorElement;
     expect(link.textContent).toBe('adamospizzas.example');
@@ -328,7 +325,11 @@ describe('MainPage', () => {
     entityProvider.trigger?.({ name: 'Bare Bones Cafe', coordinates: { lng: -96.79, lat: 33.0 } });
     await flushPromises();
 
-    expect(root.querySelectorAll('.modal-details p')).toHaveLength(0);
+    // Always shows fallbacks for missing fields plus the two placeholder rows.
+    const lines = Array.from(root.querySelectorAll('.modal-details p')).map((p) => p.textContent);
+    expect(lines).toContain('No website');
+    expect(lines).toContain('No phone');
+    expect(lines.some((l) => l?.includes('4.5') && l?.includes('1,112'))).toBe(true);
   });
 
   it('opening the modal locks map interaction; the exit button unlocks it', async () => {

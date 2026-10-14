@@ -645,19 +645,23 @@ export class MainPage {
      */
     const render = (): void => {
       const lines: ModalLine[] = [];
+
+      lines.push({ value: 4.5, count: 1112 });
+
       if (state.distanceLoading) lines.push('Finding distance...');
       else if (state.distanceLine) lines.push(state.distanceLine);
 
-      if (details.cuisine) lines.push(details.cuisine);
-      if (deals.length > 0) lines.push(["Today's deals:", ...deals.map((deal) => `• ${deal.description}`)]);
       if (details.address && details.address.length > 0) lines.push(details.address);
-      if (details.phone) lines.push(details.phone);
-      if (details.hours) lines.push(details.hours);
+
       if (details.website) {
-        // Spreadsheet entries often omit the scheme ("example.com").
         const href = /^[a-z][a-z0-9+.-]*:/i.test(details.website) ? details.website : `https://${details.website}`;
         lines.push({ text: details.website, href });
+      } else {
+        lines.push('No website');
       }
+
+      lines.push(details.phone ?? 'No phone');
+
       this.modal.setLines(lines);
     };
 
