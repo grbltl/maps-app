@@ -6,7 +6,6 @@ import type { Coordinates, Entity, EntityConfig } from '../../core/types';
 import { Modal, type ModalLine } from '../modal/Modal';
 import { Toast } from '../toast/Toast';
 import { haversineDistanceMiles, formatDistanceMiles } from '../../utils/distance';
-import { activeDeals } from '../../utils/deals';
 import { getCurrentPosition } from '../../utils/geolocation';
 import { boundsFromCoordinates, buildCirclePolygonCoordinates } from '../../utils/geoCircle';
 
@@ -624,8 +623,6 @@ export class MainPage {
     const requestId = ++this.modalRequestId;
     const hasLocationSource: boolean = Boolean(this.currentLocation) || Boolean(this.getGeolocation());
     const details = entity.details ?? {};
-    const deals = activeDeals(details.deals, new Date());
-
     const state = {
       distanceLoading: hasLocationSource,
       distanceLine: null as string | null
@@ -639,7 +636,7 @@ export class MainPage {
      * hand-patching the DOM.
      * Without it: The distance update would need its own bespoke DOM edit,
      * risking lines appearing in the wrong order.
-     * Inputs: None (closes over `state`, `details`, `deals`).
+     * Inputs: None (closes over `state`, `details`).
      * Output: None (void) - calls this.modal.setLines() as a side effect.
      * Fields the entity doesn't have are simply left out.
      */

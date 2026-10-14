@@ -28,7 +28,7 @@ describe('toEntity', () => {
 });
 
 describe('FileEntityDataConnector', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => { vi.unstubAllGlobals(); });
 
   it('fetches the file once and reuses it', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
