@@ -58,6 +58,7 @@ function safeHttpUrl(href: string): string | null {
  */
 export class Modal {
   private readonly backdrop: HTMLDivElement;
+  private readonly box: HTMLDivElement;
   private readonly titleEl: HTMLHeadingElement;
   private readonly detailsEl: HTMLDivElement;
 
@@ -77,7 +78,8 @@ export class Modal {
     this.backdrop = document.createElement('div');
     this.backdrop.className = 'modal-backdrop hidden';
 
-    const box = document.createElement('div');
+    this.box = document.createElement('div');
+    const box = this.box;
     box.className = 'modal-box';
     box.setAttribute('role', 'dialog');
     box.setAttribute('aria-modal', 'true');
@@ -185,7 +187,11 @@ export class Modal {
    * body.modal-open, invokes onOpen).
    */
   open(): void {
-    this.backdrop.classList.remove('hidden');
+    this.backdrop.classList.remove('hidden', 'closing');
+    this.backdrop.classList.add('entering');
+    this.box.addEventListener('animationend', () => {
+      this.backdrop.classList.remove('entering');
+    }, { once: true });
     document.body.classList.add('modal-open');
     this.hooks.onOpen?.();
   }
@@ -202,8 +208,18 @@ export class Modal {
    * body.modal-open, invokes onClose).
    */
   close(): void {
-    this.backdrop.classList.add('hidden');
-    document.body.classList.remove('modal-open');
-    this.hooks.onClose?.();
+    this.backdrop.classList.remove('entering');
+    this.backdrop.classList.add('closing');
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      this.backdrop.classList.remove('closing');
+      this.backdrop.classList.add('hidden');
+      document.body.classList.remove('modal-open');
+      this.hooks.onClose?.();
+    };
+    this.box.addEventListener('animationend', finish, { once: true });
+    setTimeout(finish, 300); // fallback if animation doesn't fire
   }
 }
