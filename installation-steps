@@ -1,0 +1,50 @@
+Installation Steps
+==================
+
+Prerequisites
+-------------
+- Node.js >= 20.0.0 and < 21.0.0 (Node 20.x LTS recommended)
+- npm (comes with Node.js)
+
+1. Clone the repository
+-----------------------
+  git clone <repository-url>
+  cd maps-app
+
+2. Install dependencies
+-----------------------
+  Navigate to the frontend directory and install:
+
+  cd frontend
+  npm install
+
+3. Start the development server
+--------------------------------
+  From the frontend/ directory:
+
+  npm run dev
+
+  The app will be available at http://localhost:5173 (or the port Vite assigns).
+
+4. (Optional) Dev server for phone testing
+-------------------------------------------
+  Geolocation only works on secure pages. To test on a phone over your LAN:
+
+  npm run dev:phone
+
+  This starts Vite with a self-signed HTTPS certificate accessible on your local network.
+
+5. Run tests
+------------
+  From the frontend/ directory:
+
+  npm test            # run once
+  npm run test:watch  # watch mode
+
+6. Build for production
+-----------------------
+  From the frontend/ directory:
+
+  npm run build
+
+  This type-checks the project (tsc --noEmit) and then produces a production build in frontend/dist/.
